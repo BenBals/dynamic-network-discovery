@@ -3,14 +3,15 @@ use clap::Parser;
 use csv;
 use derive_more::Add;
 use indicatif::{ParallelProgressIterator, ProgressBar};
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
-use std::cmp::max;
+use std::cmp::{max_by_key};
 use std::fs::File;
 use std::ops::AddAssign;
 use std::time::SystemTime;
 use std::{error::Error, fs};
+use rand::rngs::StdRng;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct NodeIdx(usize);
@@ -23,8 +24,12 @@ struct Time(usize);
 
 #[derive(Debug, Clone)]
 struct TemporalGraph {
+    /// Vector indexed by `NodeIdx` where each node has a list of it's neighbours and the edge
+    /// connecting them
     adj_lists: Vec<Vec<(NodeIdx, EdgeIdx)>>,
+    /// An edge is represented by its two adjacent nodes (ordered by index) and its time label
     edges: Vec<(NodeIdx, NodeIdx, Time)>,
+    /// Edges may be labels with labels in `0..tmax.0`. NB, this doesn't include `tmax` itself.
     tmax: Time,
 }
 
@@ -36,11 +41,18 @@ impl AddAssign<usize> for Time {
 
 impl TemporalGraph {
     fn gen_erdos_renyi(size: usize, tmax: Time, probability: f64) -> TemporalGraph {
+        Self::gen_erdos_renyi_with_rng(size, tmax, probability, Box::new(thread_rng()))
+    }
+
+    fn gen_erdos_renyi_from_seed(size: usize, tmax: Time, probability: f64, seed: u64) -> TemporalGraph {
+        Self::gen_erdos_renyi_with_rng(size, tmax, probability, Box::new(StdRng::seed_from_u64(seed)))
+    }
+
+    fn gen_erdos_renyi_with_rng(size: usize, tmax: Time, probability: f64, mut rng: Box<dyn RngCore>) -> TemporalGraph {
         let mut adj_lists = vec![vec![]; size];
 
         let mut edges =
             Vec::with_capacity((probability * size as f64 * size as f64).ceil() as usize);
-        let mut rng = thread_rng();
 
         for i in 0..size {
             for j in 0..i {
@@ -100,7 +112,9 @@ impl TemporalGraph {
 
 struct FollowAlgorithmExecution {
     graph: TemporalGraph,
+    /// `NodeIdx` -> `Vec` of `Time`s where a previous start infection began
     past_start_infections: Vec<Vec<Time>>,
+    /// Stack of start infections to perform in the future
     todo_start_infections: Vec<(NodeIdx, Time)>,
     discovered_edges: Vec<bool>,
     infection_attempts: Vec<Vec<bool>>,
@@ -184,9 +198,7 @@ impl FollowAlgorithmExecution {
 
     // Call this when the edge label has been discovered
     fn update_todo_start_infections(&mut self, edge: EdgeIdx) {
-        let left = self.graph.edges[edge.0].0;
-        let right = self.graph.edges[edge.0].0;
-        let label = self.graph.edge_label(edge);
+        let (left, right, label): (NodeIdx, NodeIdx, Time) = self.graph.edges[edge.0];
 
         self.add_todo_start_infection(left, label);
         if label.0 >= 1 {
@@ -223,12 +235,46 @@ impl FollowAlgorithmExecution {
             if self.discovered_edges[edge] == false {
                 // println!("Trying to find a start edge at {:?}", self.graph.edges[edge].0);
                 return self
-                    .find_new_edge_starting_at_node(self.graph.edges[edge].0)
+                    .find_new_edge(EdgeIdx(edge))
                     .unwrap();
             }
         }
 
         panic!("This should never happen")
+    }
+
+    /// NB, this method not necessarily discovers the label of the targeted edge, but tries to do
+    /// so until *some* new edge has been discovered
+    /// Panics if the target edge has been discovered before
+    fn find_new_edge(&mut self, target_edge: EdgeIdx) -> Option<EdgeIdx> {
+        assert!(!self.discovered_edges[target_edge.0]);
+
+        let (left, right, _) = self.graph.edges[target_edge.0];
+
+        let best_candidate = max_by_key(left, right, |node| self.graph.adj_lists[node.0].len());
+
+        // TODO: Try to optimize clone away
+        let previously_discovered_edges = self.discovered_edges.clone();
+
+        for time in 1..self.graph.tmax.0 {
+            // Skip if there was in infection attempt along the target edge at the test time
+            if !self.infection_attempts[target_edge.0][time] {
+                self.restarts_for_component_discovery += 1;
+                self.past_start_infections[best_candidate.0].push(Time(time - 1));
+                let (_infection_log, infected_edges) =
+                    self.simulate_infection(best_candidate, Time(time - 1));
+                // println!("\t\t\tInfected edges: {:?}", infected_edges);
+
+                // TODO: If still neccessary, update todo_start_infections here
+                for edge in infected_edges {
+                    if !previously_discovered_edges[edge.0] {
+                        return Some(edge);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn find_new_edge_starting_at_node(&mut self, start_node: NodeIdx) -> Option<EdgeIdx> {
@@ -240,10 +286,10 @@ impl FollowAlgorithmExecution {
                 // Edges at time 0 can never be discovered, because we cannot cause a matching start infection
                 for time in 1..self.graph.tmax.0 {
                     // println!("\t\tTesting time {}", time);
-                    if !self.infection_attempts[neighbour.1 .0][time] {
+                    if !self.infection_attempts[neighbour.1.0][time] {
                         self.restarts_for_component_discovery += 1;
-                        self.past_start_infections[neighbour.0 .0].push(Time(time - 1));
-                        let (infection_log, infected_edges) =
+                        self.past_start_infections[neighbour.0.0].push(Time(time - 1));
+                        let (_infection_log, infected_edges) =
                             self.simulate_infection(start_node, Time(time - 1));
                         // println!("\t\t\tInfected edges: {:?}", infected_edges);
 
@@ -434,7 +480,7 @@ mod tests {
             execution.discovered_edges_count,
             execution.graph.edge_count()
         );
-        for (edge_idx, (left, right, time)) in execution.graph.edges.iter().enumerate() {
+        for (edge_idx, (_left, _right, _time)) in execution.graph.edges.iter().enumerate() {
             assert!(execution.discovered_edges[edge_idx]);
         }
     }
@@ -475,8 +521,8 @@ mod tests {
     #[test]
     fn test_skipping_helps() {
         let (execution_skipped, execution_unskipped) =
-            execute_follow_skipped_unskipped(TemporalGraph::gen_erdos_renyi(100, Time(100), 0.5));
-        assert_le!()
+            execute_follow_skipped_unskipped(TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420));
+        assert_le!(execution_skipped.restarts_for_component_discovery, execution_unskipped.restarts_for_component_discovery)
     }
 }
 
@@ -487,3 +533,4 @@ mod tests {
 // - [ ] Add CLI arguments
 // - [ ] Write export to file
 // - [ ] Include experimental metadata in files
+// - [ ] Index Vecs by newytpes
