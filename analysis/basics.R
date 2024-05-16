@@ -4,13 +4,14 @@ library(glue)
 library(stringr)
 library(reshape2)
 
-timestamp_skipped   <- "2024-05-14T11:53:39.558182+00:00-skipped"
-timestamp_unskipped <- "2024-05-14T13:41:59.779396+00:00-unskipped"
+timestamp_skipped   <- "2024-05-15T16:59:56.507830+00:00-skipped"
+timestamp_unskipped <- "2024-05-16T09:54:31.135232+00:00-unskipped"
 
 read_experiment_results <- function (timestamp) {
   data <- read.csv(glue("../data/experiment-results-{timestamp}.csv")) %>% as_tibble()
   data$probability_fac <- as.factor(data$probability)
   data$component_discovery_percentage <- data$restarts_for_component_discovery / data$restarts
+  data$restarts_for_following <- data$restarts - data$restarts_for_component_discovery
   return(data)
 }
 
@@ -23,7 +24,7 @@ data_unskipped <- data_unskipped %>% mutate(optimization = "unskipped")
 data <- bind_rows(data_skipped, data_unskipped)
 
 data %>%
-  ggplot(aes(x = edge_count, y = restarts, color = probability_fac)) +
+  ggplot(aes(x = edge_count, y = restarts_for_following, color = probability_fac)) +
   facet_grid(optimization ~ .) + 
   geom_point() +
   geom_abline(slope = 6) +

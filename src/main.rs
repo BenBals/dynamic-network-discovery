@@ -3,15 +3,15 @@ use clap::Parser;
 use csv;
 use derive_more::Add;
 use indicatif::{ParallelProgressIterator, ProgressBar};
+use rand::rngs::StdRng;
 use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
-use std::cmp::{max_by_key};
+use std::cmp::max_by_key;
 use std::fs::File;
 use std::ops::AddAssign;
 use std::time::SystemTime;
 use std::{error::Error, fs};
-use rand::rngs::StdRng;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct NodeIdx(usize);
@@ -41,14 +41,31 @@ impl AddAssign<usize> for Time {
 
 impl TemporalGraph {
     fn gen_erdos_renyi(size: usize, tmax: Time, probability: f64) -> TemporalGraph {
-        Self::gen_erdos_renyi_with_rng(size, tmax, probability, Box::new(thread_rng()))
+        let mut rng: Box<dyn RngCore> = Box::new(thread_rng());
+        Self::gen_erdos_renyi_with_rng(size, tmax, probability, &mut rng)
     }
 
-    fn gen_erdos_renyi_from_seed(size: usize, tmax: Time, probability: f64, seed: u64) -> TemporalGraph {
-        Self::gen_erdos_renyi_with_rng(size, tmax, probability, Box::new(StdRng::seed_from_u64(seed)))
+    fn gen_erdos_renyi_from_seed(
+        size: usize,
+        tmax: Time,
+        probability: f64,
+        seed: u64,
+    ) -> TemporalGraph {
+        let mut rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(seed));
+        Self::gen_erdos_renyi_with_rng(
+            size,
+            tmax,
+            probability,
+            &mut rng,
+        )
     }
 
-    fn gen_erdos_renyi_with_rng(size: usize, tmax: Time, probability: f64, mut rng: Box<dyn RngCore>) -> TemporalGraph {
+    fn gen_erdos_renyi_with_rng(
+        size: usize,
+        tmax: Time,
+        probability: f64,
+        rng: &mut Box<dyn RngCore>,
+    ) -> TemporalGraph {
         let mut adj_lists = vec![vec![]; size];
 
         let mut edges =
@@ -234,9 +251,7 @@ impl FollowAlgorithmExecution {
         for edge in 0..self.graph.edge_count() {
             if self.discovered_edges[edge] == false {
                 // println!("Trying to find a start edge at {:?}", self.graph.edges[edge].0);
-                return self
-                    .find_new_edge(EdgeIdx(edge))
-                    .unwrap();
+                return self.find_new_edge(EdgeIdx(edge)).unwrap();
             }
         }
 
@@ -269,38 +284,6 @@ impl FollowAlgorithmExecution {
                 for edge in infected_edges {
                     if !previously_discovered_edges[edge.0] {
                         return Some(edge);
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    fn find_new_edge_starting_at_node(&mut self, start_node: NodeIdx) -> Option<EdgeIdx> {
-        // TODO: Optimize the clone away
-        for neighbour in self.graph.neighbours(start_node).clone() {
-            // println!("\tAttempting to find edge between {:?} and {:?}", start_node, neighbour);
-            // println!("\t\tPreviously discovered: {:?}", self.discovered_edges);
-            if !self.discovered_edges[neighbour.1 .0] {
-                // Edges at time 0 can never be discovered, because we cannot cause a matching start infection
-                for time in 1..self.graph.tmax.0 {
-                    // println!("\t\tTesting time {}", time);
-                    if !self.infection_attempts[neighbour.1.0][time] {
-                        self.restarts_for_component_discovery += 1;
-                        self.past_start_infections[neighbour.0.0].push(Time(time - 1));
-                        let (_infection_log, infected_edges) =
-                            self.simulate_infection(start_node, Time(time - 1));
-                        // println!("\t\t\tInfected edges: {:?}", infected_edges);
-
-                        // TODO: If still neccessary, update todo_start_infections here
-
-                        // TODO: Optimize to not iterate as much
-                        for edge in infected_edges {
-                            if self.discovered_edges[edge.0] {
-                                return Some(edge);
-                            }
-                        }
                     }
                 }
             }
@@ -350,16 +333,16 @@ struct ExperimentResult {
     restarts: usize,
     restarts_for_component_discovery: usize,
     tmax: usize,
+    skipped_redundant_infections: bool,
 }
 
 fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all("./data")?;
     let now = SystemTime::now();
     let now_utc: DateTime<Utc> = now.into();
-    let file = File::create(format!(
-        "./data/experiment-results-{}.csv",
-        now_utc.to_rfc3339()
-    ))?;
+    let filename = format!("./data/experiment-results-{}.csv", now_utc.to_rfc3339());
+    println!("Writing results to {}", &filename);
+    let file = File::create(&filename)?;
     let mut wtr = csv::Writer::from_writer(file);
 
     for result in results {
@@ -367,6 +350,7 @@ fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> 
     }
 
     wtr.flush()?;
+
     Ok(())
 }
 
@@ -374,9 +358,9 @@ const MAX_NODES: usize = 500;
 const REPEATS: usize = 5;
 const PROBABILITIES: [f64; 7] = [0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 0.9];
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct ExperimentTask {
-    nodes: usize,
+    graph: TemporalGraph,
     probability: f64,
 }
 
@@ -387,31 +371,46 @@ struct Args {
     /// If a node is marked for a start infection, but all adjacent edges are discovered, don't skip
     #[arg(short, long)]
     dont_skip_redundant_start_infections: bool,
+    #[arg(short, long, default_value_t = 42)]
+    seed: u64,
 }
 
 fn main() {
-    let iterations = MAX_NODES * REPEATS * PROBABILITIES.len();
-    let bar = ProgressBar::new(iterations as u64);
+    let args = Args::parse();
+    println!("Arguments: {:?}", args);
 
+    let iterations = MAX_NODES * REPEATS * PROBABILITIES.len();
     let mut tasks = Vec::with_capacity(iterations);
+
+    // For deterministic graph generation
+    let mut shared_rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(args.seed));
 
     for probability in PROBABILITIES {
         for nodes in 1..=MAX_NODES {
             for _repeat in 1..=REPEATS {
-                tasks.push(ExperimentTask { probability, nodes });
+                tasks.push(ExperimentTask {
+                    // While deterministically generating graph is significantly slower, it makes
+                    // comparing results between different configurations of the follow algorithm
+                    // much more meaningful
+                    graph: TemporalGraph::gen_erdos_renyi_with_rng(
+                        nodes,
+                        Time(nodes),
+                        probability,
+                        &mut shared_rng,
+                    ),
+                    probability: probability
+                });
             }
         }
     }
 
-    let args = Args::parse();
+    let bar = ProgressBar::new(iterations as u64);
 
     let results: Vec<ExperimentResult> = tasks
         .par_iter()
         .progress_with(bar)
         .map(move |task: &ExperimentTask| {
-            let graph =
-                TemporalGraph::gen_erdos_renyi(task.nodes, Time(task.nodes), task.probability);
-            let mut execution = FollowAlgorithmExecution::new(graph, args.clone());
+            let mut execution = FollowAlgorithmExecution::new(task.graph.clone(), args.clone());
             execution.execute();
             ExperimentResult {
                 probability: task.probability,
@@ -419,7 +418,8 @@ fn main() {
                 edge_count: execution.graph.edge_count(),
                 restarts: execution.number_of_restarts(),
                 restarts_for_component_discovery: execution.restarts_for_component_discovery,
-                tmax: task.nodes,
+                tmax: task.graph.tmax.0,
+                skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
             }
         })
         .collect();
@@ -466,7 +466,6 @@ mod tests {
             },
         );
         execution.simulate_infection(NodeIdx(0), Time(3));
-        println!("{:?}", execution.infection_attempts);
         assert!(!execution.infection_attempts[0][3]);
         assert!(execution.infection_attempts[0][4]);
         assert!(execution.infection_attempts[1][5]);
@@ -520,9 +519,13 @@ mod tests {
 
     #[test]
     fn test_skipping_helps() {
-        let (execution_skipped, execution_unskipped) =
-            execute_follow_skipped_unskipped(TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420));
-        assert_le!(execution_skipped.restarts_for_component_discovery, execution_unskipped.restarts_for_component_discovery)
+        let (execution_skipped, execution_unskipped) = execute_follow_skipped_unskipped(
+            TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420),
+        );
+        assert_le!(
+            execution_skipped.restarts_for_component_discovery,
+            execution_unskipped.restarts_for_component_discovery
+        )
     }
 }
 
