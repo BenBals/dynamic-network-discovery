@@ -52,12 +52,7 @@ impl TemporalGraph {
         seed: u64,
     ) -> TemporalGraph {
         let mut rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(seed));
-        Self::gen_erdos_renyi_with_rng(
-            size,
-            tmax,
-            probability,
-            &mut rng,
-        )
+        Self::gen_erdos_renyi_with_rng(size, tmax, probability, &mut rng)
     }
 
     fn gen_erdos_renyi_with_rng(
@@ -127,10 +122,16 @@ impl TemporalGraph {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum RestartType {
+    Following,
+    ComponentDiscovery,
+}
+
 struct FollowAlgorithmExecution {
     graph: TemporalGraph,
     /// `NodeIdx` -> `Vec` of `Time`s where a previous start infection began
-    past_start_infections: Vec<Vec<Time>>,
+    past_start_infections: Vec<Vec<(Time, RestartType)>>,
     /// Stack of start infections to perform in the future
     todo_start_infections: Vec<(NodeIdx, Time)>,
     discovered_edges: Vec<bool>,
@@ -235,7 +236,10 @@ impl FollowAlgorithmExecution {
     }
 
     fn add_todo_start_infection(&mut self, node: NodeIdx, time: Time) {
-        if !self.past_start_infections[node.0].contains(&time) {
+        if !self.past_start_infections[node.0]
+            .iter()
+            .any(|past| past.0 == time)
+        {
             self.todo_start_infections.push((node, time))
         }
     }
@@ -275,7 +279,8 @@ impl FollowAlgorithmExecution {
             // Skip if there was in infection attempt along the target edge at the test time
             if !self.infection_attempts[target_edge.0][time] {
                 self.restarts_for_component_discovery += 1;
-                self.past_start_infections[best_candidate.0].push(Time(time - 1));
+                self.past_start_infections[best_candidate.0]
+                    .push((Time(time - 1), RestartType::ComponentDiscovery));
                 let (_infection_log, infected_edges) =
                     self.simulate_infection(best_candidate, Time(time - 1));
                 // println!("\t\t\tInfected edges: {:?}", infected_edges);
@@ -302,7 +307,7 @@ impl FollowAlgorithmExecution {
     fn explore_todo_start_infections(&mut self) {
         // TODO: Short circuit if all edges are discovered
         // println!("Exploring todo start infections");
-        // println!("\tQueue: {:?}", self.todo_start_infections);
+        println!("\tQueue: {:?}", self.todo_start_infections);
 
         while !self.todo_start_infections.is_empty() {
             let (node, time) = self.todo_start_infections.pop().unwrap();
@@ -310,8 +315,8 @@ impl FollowAlgorithmExecution {
             if (self.count_missing_edges_at_node(node) > 0)
                 || self.args.dont_skip_redundant_start_infections
             {
+                self.past_start_infections[node.0].push((time, RestartType::Following));
                 self.simulate_infection(node, time);
-                self.past_start_infections[node.0].push(time);
             }
         }
     }
@@ -398,7 +403,7 @@ fn main() {
                         probability,
                         &mut shared_rng,
                     ),
-                    probability: probability
+                    probability: probability,
                 });
             }
         }
@@ -442,6 +447,10 @@ mod tests {
         )
     }
 
+    fn generate_n100_erdos_renyi_graph() -> TemporalGraph {
+        TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420)
+    }
+
     #[test]
     fn simulate_infection_example1() {
         let graph =
@@ -450,6 +459,7 @@ mod tests {
             graph,
             Args {
                 dont_skip_redundant_start_infections: false,
+                seed: 42,
             },
         );
         execution.simulate_infection(NodeIdx(0), Time(4));
@@ -463,6 +473,7 @@ mod tests {
             generate_example2(),
             Args {
                 dont_skip_redundant_start_infections: false,
+                seed: 42,
             },
         );
         execution.simulate_infection(NodeIdx(0), Time(3));
@@ -491,12 +502,14 @@ mod tests {
             graph.clone(),
             Args {
                 dont_skip_redundant_start_infections: false,
+                seed: 42,
             },
         );
         let mut execution_unskipped = FollowAlgorithmExecution::new(
             graph,
             Args {
                 dont_skip_redundant_start_infections: true,
+                seed: 42,
             },
         );
         execution_skipped.execute();
@@ -519,13 +532,40 @@ mod tests {
 
     #[test]
     fn test_skipping_helps() {
-        let (execution_skipped, execution_unskipped) = execute_follow_skipped_unskipped(
-            TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420),
-        );
+        let (execution_skipped, execution_unskipped) =
+            execute_follow_skipped_unskipped(generate_n100_erdos_renyi_graph());
         assert_le!(
             execution_skipped.restarts_for_component_discovery,
             execution_unskipped.restarts_for_component_discovery
         )
+    }
+
+    #[test]
+    fn test_at_most_6m_following_restarts() {
+        let mut execution =
+            FollowAlgorithmExecution::new(
+                TemporalGraph::gen_erdos_renyi_from_seed(100, Time(10), 0.2, 420),
+                Args {
+                    dont_skip_redundant_start_infections: false,
+                    seed: 42,
+                },
+            );
+
+        execution.execute();
+
+        let mut total_follow_restarts = 0;
+
+        println!("Graph: {:?}", execution.graph);
+
+        for (node_idx, adj_list) in execution.graph.adj_lists.iter().enumerate() {
+            let follow_restarts = execution.past_start_infections[node_idx].iter().filter(|restart| restart.1 == RestartType::Following).count();
+            total_follow_restarts += follow_restarts;
+            println!("Node {}: {:?}", node_idx, execution.past_start_infections[node_idx]);
+            assert_le!(follow_restarts, 3*adj_list.len());
+        }
+
+        println!("Total follow restarts {}, total restarts {}", total_follow_restarts, execution.number_of_restarts());
+        assert_le!(total_follow_restarts, 6 * execution.graph.edge_count());
     }
 }
 
