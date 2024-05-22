@@ -307,7 +307,7 @@ impl FollowAlgorithmExecution {
     fn explore_todo_start_infections(&mut self) {
         // TODO: Short circuit if all edges are discovered
         // println!("Exploring todo start infections");
-        println!("\tQueue: {:?}", self.todo_start_infections);
+        // println!("\tQueue: {:?}", self.todo_start_infections);
 
         while !self.todo_start_infections.is_empty() {
             let (node, time) = self.todo_start_infections.pop().unwrap();
@@ -555,16 +555,13 @@ mod tests {
 
         let mut total_follow_restarts = 0;
 
-        println!("Graph: {:?}", execution.graph);
 
         for (node_idx, adj_list) in execution.graph.adj_lists.iter().enumerate() {
             let follow_restarts = execution.past_start_infections[node_idx].iter().filter(|restart| restart.1 == RestartType::Following).count();
             total_follow_restarts += follow_restarts;
-            println!("Node {}: {:?}", node_idx, execution.past_start_infections[node_idx]);
             assert_le!(follow_restarts, 3*adj_list.len());
         }
 
-        println!("Total follow restarts {}, total restarts {}", total_follow_restarts, execution.number_of_restarts());
         assert_le!(total_follow_restarts, 6 * execution.graph.edge_count());
     }
 }
