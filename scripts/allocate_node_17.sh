@@ -1,0 +1,1 @@
+salloc -A friedrich -w cx17 -p magic -c 250 -t 180

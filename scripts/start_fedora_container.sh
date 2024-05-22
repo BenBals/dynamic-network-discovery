@@ -1,0 +1,1 @@
+enroot start -r -rw --mount ~:/mnt fedora
