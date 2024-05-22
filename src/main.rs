@@ -13,13 +13,16 @@ use std::ops::AddAssign;
 use std::time::SystemTime;
 use std::{error::Error, fs};
 
+use rand::prelude::SliceRandom;
+use std::collections::HashMap;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct NodeIdx(usize);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct EdgeIdx(usize);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Add)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Add, Hash)]
 struct Time(usize);
 
 #[derive(Debug, Clone)]
@@ -131,7 +134,7 @@ enum RestartType {
 struct FollowAlgorithmExecution {
     graph: TemporalGraph,
     /// `NodeIdx` -> `Vec` of `Time`s where a previous start infection began
-    past_start_infections: Vec<Vec<(Time, RestartType)>>,
+    past_start_infections: Vec<HashMap<Time, RestartType>>,
     /// Stack of start infections to perform in the future
     todo_start_infections: Vec<(NodeIdx, Time)>,
     discovered_edges: Vec<bool>,
@@ -144,7 +147,7 @@ struct FollowAlgorithmExecution {
 impl FollowAlgorithmExecution {
     fn new(graph: TemporalGraph, args: Args) -> FollowAlgorithmExecution {
         Self {
-            past_start_infections: vec![vec![]; graph.node_count()],
+            past_start_infections: vec![HashMap::new(); graph.node_count()],
             discovered_edges: vec![false; graph.edge_count()],
             discovered_edges_count: 0,
             restarts_for_component_discovery: 0,
@@ -236,11 +239,28 @@ impl FollowAlgorithmExecution {
     }
 
     fn add_todo_start_infection(&mut self, node: NodeIdx, time: Time) {
-        if !self.past_start_infections[node.0]
-            .iter()
-            .any(|past| past.0 == time)
-        {
+        if !self.is_start_infection_redundant(&node, &time) {
             self.todo_start_infections.push((node, time))
+        }
+    }
+
+    fn is_start_infection_redundant(&self, node: &NodeIdx, time: &Time) -> bool {
+        self.past_start_infections[node.0].contains_key(time)
+    }
+
+    fn try_add_past_start_infection(
+        &mut self,
+        node: NodeIdx,
+        time: Time,
+        restart_type: RestartType,
+    ) {
+        if self.is_start_infection_redundant(&node, &time) {
+            panic!(
+                "Tried to duplicate start infection (node: {:?}, time: {:?}, type: {:?})",
+                node, time, restart_type
+            );
+        } else {
+            self.past_start_infections[node.0].insert(time, restart_type);
         }
     }
 
@@ -279,8 +299,11 @@ impl FollowAlgorithmExecution {
             // Skip if there was in infection attempt along the target edge at the test time
             if !self.infection_attempts[target_edge.0][time] {
                 self.restarts_for_component_discovery += 1;
-                self.past_start_infections[best_candidate.0]
-                    .push((Time(time - 1), RestartType::ComponentDiscovery));
+                self.try_add_past_start_infection(
+                    best_candidate,
+                    Time(time - 1),
+                    RestartType::ComponentDiscovery,
+                );
                 let (_infection_log, infected_edges) =
                     self.simulate_infection(best_candidate, Time(time - 1));
                 // println!("\t\t\tInfected edges: {:?}", infected_edges);
@@ -312,10 +335,11 @@ impl FollowAlgorithmExecution {
         while !self.todo_start_infections.is_empty() {
             let (node, time) = self.todo_start_infections.pop().unwrap();
             // println!("\tStarting infection at {:?} at {:?}", node, time);
-            if (self.count_missing_edges_at_node(node) > 0)
-                || self.args.dont_skip_redundant_start_infections
+            if (self.count_missing_edges_at_node(node) > 0
+                || self.args.dont_skip_redundant_start_infections)
+                && !self.is_start_infection_redundant(&node, &time)
             {
-                self.past_start_infections[node.0].push((time, RestartType::Following));
+                self.try_add_past_start_infection(node, time, RestartType::Following);
                 self.simulate_infection(node, time);
             }
         }
@@ -409,6 +433,8 @@ fn main() {
         }
     }
 
+    tasks.shuffle(&mut shared_rng);
+
     let bar = ProgressBar::new(iterations as u64);
 
     let results: Vec<ExperimentResult> = tasks
@@ -436,6 +462,8 @@ fn main() {
 mod tests {
     use super::*;
     use more_asserts::*;
+    use std::collections::HashSet;
+    use std::hash::Hash;
 
     fn generate_example2() -> TemporalGraph {
         TemporalGraph::from_edge_list(
@@ -485,6 +513,20 @@ mod tests {
         assert_eq!(execution.discovered_edges_count, 2);
     }
 
+    fn execute_erdos_renyi(nodes: usize, tmax: Time, probability: f64) -> FollowAlgorithmExecution {
+        let mut execution = FollowAlgorithmExecution::new(
+            TemporalGraph::gen_erdos_renyi_from_seed(nodes, tmax, probability, 420),
+            Args {
+                dont_skip_redundant_start_infections: false,
+                seed: 42,
+            },
+        );
+
+        execution.execute();
+
+        return execution;
+    }
+
     fn assert_all_edges_discovered(execution: &FollowAlgorithmExecution) {
         assert_eq!(
             execution.discovered_edges_count,
@@ -521,6 +563,15 @@ mod tests {
         (execution_skipped, execution_unskipped)
     }
 
+    fn has_unique_elements<T>(iter: T) -> bool
+    where
+        T: IntoIterator,
+        T::Item: Eq + Hash,
+    {
+        let mut uniq = HashSet::new();
+        iter.into_iter().all(move |x| uniq.insert(x))
+    }
+
     #[test]
     fn execute_follow_example2() {
         let (execution_skipped, execution_unskipped) =
@@ -542,24 +593,17 @@ mod tests {
 
     #[test]
     fn test_at_most_6m_following_restarts() {
-        let mut execution =
-            FollowAlgorithmExecution::new(
-                TemporalGraph::gen_erdos_renyi_from_seed(100, Time(10), 0.2, 420),
-                Args {
-                    dont_skip_redundant_start_infections: false,
-                    seed: 42,
-                },
-            );
-
-        execution.execute();
+        let execution = execute_erdos_renyi(100, Time(100), 0.2);
 
         let mut total_follow_restarts = 0;
 
-
         for (node_idx, adj_list) in execution.graph.adj_lists.iter().enumerate() {
-            let follow_restarts = execution.past_start_infections[node_idx].iter().filter(|restart| restart.1 == RestartType::Following).count();
+            let follow_restarts = execution.past_start_infections[node_idx]
+                .iter()
+                .filter(|restart| *restart.1 == RestartType::Following)
+                .count();
             total_follow_restarts += follow_restarts;
-            assert_le!(follow_restarts, 3*adj_list.len());
+            assert_le!(follow_restarts, 3 * adj_list.len());
         }
 
         assert_le!(total_follow_restarts, 6 * execution.graph.edge_count());
@@ -574,3 +618,4 @@ mod tests {
 // - [ ] Write export to file
 // - [ ] Include experimental metadata in files
 // - [ ] Index Vecs by newytpes
+// - [ ] rewrite past_start_infections to use HashMap
