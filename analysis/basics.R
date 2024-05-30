@@ -4,9 +4,6 @@ library(glue)
 library(stringr)
 library(reshape2)
 
-timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
-timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
-
 read_experiment_results <- function(timestamp) {
   data <- read.csv(glue("../data/experiment-results-{timestamp}.csv")) %>%
     as_tibble() %>%
@@ -18,24 +15,34 @@ read_experiment_results <- function(timestamp) {
   return(data)
 }
 
+timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
+timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
+timestamp_snap_all <- "2024-05-29T14:45:12.664694+00:00"
+
 data_skipped <- read_experiment_results(timestamp_skipped)
 data_unskipped <- read_experiment_results(timestamp_unskipped)
+data_snap <- read_experiment_results(timestamp_snap_all)
 
 data_skipped <- data_skipped %>% mutate(optimization = "skipped")
 data_unskipped <- data_unskipped %>% mutate(optimization = "unskipped")
+data_snap <- data_snap %>% mutate(source = "snap")
 
 data <- bind_rows(data_skipped, data_unskipped)
 
-plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_variable = "optimization") {
+plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_variable = NULL, title = "") {
   plot <- dat %>%
     ggplot(aes(x = edge_count, y = !!sym(var), color = probability_fac)) +
-    facet_wrap(reformulate(facet_variable), nrow = ifelse(facet_variable == "optimization", 2, 3)) +
     geom_point() +
     # geom_abline(slope = 6) +
     scale_color_discrete() +
     geom_smooth(method = lm, color = "red") +
     labs(x = "Edge count", y = label, color = "p") +
-    ggtitle("Follow algorithm Erdős-Renyi graphs with different densities")
+    ggtitle(title)
+
+  if (!is.null(facet_variable)) {
+    plot <- plot +
+      facet_wrap(reformulate(facet_variable), nrow = ifelse(facet_variable == "optimization", 2, 3))
+  }
 
   if (logged) {
     plot <- plot +
@@ -51,9 +58,11 @@ plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_v
   return(plot)
 }
 
-plot_variable_against_edges(data, "restarts", "Restarts", logged = FALSE)
+plot_variable_against_edges(data, "restarts", "Restarts", logged = FALSE, facet_variable = "optimization",
+                            title = "Follow algorithm Erdős-Renyi graphs with different densities")
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-{timestamp_skipped}.pdf"))
-plot_variable_against_edges(data, "restarts_for_following", "Restarts (following only)", logged = FALSE)
+plot_variable_against_edges(data, "restarts_for_following", "Restarts (following only)", logged = FALSE,
+                            title = "Follow algorithm Erdős-Renyi graphs with different densities")
 ggsave(glue("./export/erdos-renyi_restarts-for-following-by-edge-count-{timestamp_skipped}.pdf"))
 plot_variable_against_edges(data %>% filter(probability == 0.3), "restarts", "Restarts", logged = TRUE)
 plot_variable_against_edges(
@@ -61,8 +70,11 @@ plot_variable_against_edges(
   "restarts",
   "Restarts",
   logged = TRUE,
-  facet_variable = "probability_fac")
+  facet_variable = "probability_fac",
+  title = "Follow algorithm Erdős-Renyi graphs with different densities")
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"))
+plot_variable_against_edges(data_snap, "restarts", "Restarts", facet_variable = "source", title = "SNAP Networks")
+ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"))
 
 summary(data_skipped$restarts_per_edge)
 

@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
@@ -76,11 +77,14 @@ impl TemporalGraph {
             "SNAP graph csv file did not have header line",
         ));
 
-        let n: usize =
-            f64::round(f64::sqrt(first_line?.split(",").count() as f64 - 1.0 + 0.25) + 0.5)
-                as usize;
+        // let n: usize =
+        //    f64::round(f64::sqrt( + 0.25) + 0.5)
+        //        as usize;
+        let adj_matrix_length = first_line?.split(",").count() - 1;
+        let n = f64::round(0.5 * (f64::sqrt(4.0 * adj_matrix_length as f64 + 1.0) + 1.0)) as usize;
+        assert_eq!(adj_matrix_length, n * (n-1));
 
-        let time: usize = 0;
+        let mut time: usize = 1;
         for line in lines {
             let adj_bits = line.split(",").skip(1).map(|str| str == "1").enumerate();
             for (index, bit) in adj_bits {
@@ -97,6 +101,7 @@ impl TemporalGraph {
                     }
                 }
             }
+            time += 1;
         }
 
         let tmax = edge_list
@@ -105,6 +110,12 @@ impl TemporalGraph {
             .max()
             .unwrap_or(0)
             + 1;
+
+        // Check that the edge list is unique
+        let mut edge_set = HashSet::new();
+        for edge in &edge_list {
+            assert!(edge_set.insert(edge.clone()), "duplicate edge: {:?} (n = {})", edge, n)
+        }
 
         Ok(
             TemporalGraph::from_edge_list(

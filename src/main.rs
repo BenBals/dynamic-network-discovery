@@ -194,3 +194,4 @@ fn main() -> io::Result<()> {
 // - [ ] Index Vecs by newytpes
 // - [x] rewrite past_start_infections to use HashMap
 // - Generalize to directed graphs (and parse SNAP dataset accordingly)
+// - [ ] Track negative information (especially with multiedges)

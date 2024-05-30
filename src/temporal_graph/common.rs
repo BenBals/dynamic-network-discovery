@@ -6,14 +6,15 @@ use std::path::Path;
 use derive_more::Add;
 use rand::{Rng, RngCore, thread_rng};
 use rand::prelude::StdRng;
+use crate::util::vec_has_duplicates;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub(crate) struct NodeIdx(pub usize);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct EdgeIdx(pub usize);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Add, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Add, Hash)]
 pub(crate) struct Time(pub usize);
 
 #[derive(Debug, Clone)]
@@ -22,6 +23,7 @@ pub(crate) struct TemporalGraph {
     /// connecting them
     pub adj_lists: Vec<Vec<(NodeIdx, EdgeIdx)>>,
     /// An edge is represented by its two adjacent nodes (ordered by index) and its time label
+    /// Also note that there may not be two identical edges (same nodes *and* time).
     pub edges: Vec<(NodeIdx, NodeIdx, Time)>,
     /// Edges may be labels with labels in `0..tmax.0`. NB, this doesn't include `tmax` itself.
     pub tmax: Time,
@@ -56,6 +58,8 @@ impl TemporalGraph {
     }
 
     pub fn from_edge_list(edges: Vec<(NodeIdx, NodeIdx, Time)>, tmax: Time) -> TemporalGraph {
+        assert!(!vec_has_duplicates(edges.clone()));
+
         let largest_node_idx = edges.iter().map(|edge| edge.1 .0).max().unwrap_or(0);
 
         let mut adj_lists = vec![vec![]; largest_node_idx + 1];
@@ -71,4 +75,5 @@ impl TemporalGraph {
             adj_lists,
         }
     }
+
 }

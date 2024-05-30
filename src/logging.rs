@@ -21,8 +21,7 @@ pub fn init_logging() {
         .log_to_file(FileSpec::default()
             .directory(output_dir))
         .print_message()
-        .duplicate_to_stdout(Duplicate::Info)
-        .duplicate_to_stderr(Duplicate::Error)
+        .duplicate_to_stderr(Duplicate::Warn)
         .start()
         .unwrap_or_else(|error| panic!("Logging initialization failed: {}", error));
     log_panics::init();

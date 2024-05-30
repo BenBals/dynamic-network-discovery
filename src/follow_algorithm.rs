@@ -1,7 +1,8 @@
+use crate::temporal_graph::common::*;
+use crate::{Args, TemporalGraph};
+use log::{debug, info};
 use std::cmp::max_by_key;
 use std::collections::HashMap;
-use crate::{Args, TemporalGraph};
-use crate::temporal_graph::common::*;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum RestartType {
@@ -15,7 +16,10 @@ pub struct FollowAlgorithmExecution {
     past_start_infections: Vec<HashMap<Time, RestartType>>,
     /// Stack of start infections to perform in the future
     todo_start_infections: Vec<(NodeIdx, Time)>,
+    /// `EdgeIdx` -> `Bool`, is `true` if the edge with the respective index has been discovered
     discovered_edges: Vec<bool>,
+    /// `EdgeIdx` -> `Time` -> `bool`, is true if there was an infection attempt at the given time
+    /// via the edge
     infection_attempts: Vec<Vec<bool>>,
     discovered_edges_count: usize,
     pub restarts_for_component_discovery: usize,
@@ -36,7 +40,7 @@ impl FollowAlgorithmExecution {
         }
     }
 
-    fn is_immune(&self, node: NodeIdx, infection_log: &Vec<Option<Time>>) -> bool {
+    fn is_immune(&self, node: NodeIdx, infection_log: &Vec<Option<EdgeIdx>>) -> bool {
         infection_log[node.0].is_some()
     }
 
@@ -44,31 +48,41 @@ impl FollowAlgorithmExecution {
         &mut self,
         edge: (NodeIdx, EdgeIdx),
         time: Time,
-        infection_log: &mut Vec<Option<Time>>,
+        infection_log: &mut Vec<Option<EdgeIdx>>,
     ) -> bool {
         let is_immune: bool = self.is_immune(edge.0, infection_log);
         if !is_immune {
-            self.infection_attempts[edge.1.0][time.0] = true;
+            debug!("\tInfection attempt along {:?} at {:?}", edge, time);
+            self.infection_attempts[edge.1 .0][time.0] = true;
         }
         if (self.graph.edge_label(edge.1) == time) && !is_immune {
-            if !self.discovered_edges[edge.1.0] {
+            if !self.discovered_edges[edge.1 .0] {
                 self.discovered_edges_count += 1;
-                self.discovered_edges[edge.1.0] = true;
+                self.discovered_edges[edge.1 .0] = true;
             }
-            infection_log[edge.0.0] = Some(time);
+            infection_log[edge.0 .0] = Some(edge.1);
             return true;
         }
         false
     }
 
+    /// Returns
+    /// - `infection_log: Vec<Option<EdgeIdx>>`: indexed by `NodeIdx`. Is some edge if the respective
+    ///   node has been infected via this edge
+    /// - `infected_edges: Vec<EdgeIdx>`
+    // TODO: Merge into a single tree structure
     fn simulate_infection(
         &mut self,
         root_node: NodeIdx,
         infection_time: Time,
-    ) -> (Vec<Option<Time>>, Vec<EdgeIdx>) {
+    ) -> (Vec<Option<EdgeIdx>>, Vec<EdgeIdx>) {
+        debug!(
+            "Simulating infection at {:?} at {:?}",
+            root_node, infection_time
+        );
         let mut infected: Vec<NodeIdx> = vec![root_node];
         let mut time = infection_time + Time(1);
-        let mut infection_log = vec![None; self.graph.node_count()];
+        let mut infection_log: Vec<Option<EdgeIdx>> = vec![None; self.graph.node_count()];
         let mut infected_edges = vec![];
 
         while !infected.is_empty() & (time.0 < self.graph.tmax.0) {
@@ -134,8 +148,9 @@ impl FollowAlgorithmExecution {
     ) {
         if self.is_start_infection_redundant(&node, &time) {
             panic!(
-                "Tried to duplicate start infection (node: {:?}, time: {:?}, type: {:?})",
-                node, time, restart_type
+                "Tried to duplicate start infection (node: {:?}, time: {:?}, new type: {:?}, old type: {:?})\n\t{:?}",
+                node, time, restart_type, self.past_start_infections[node.0].get(&time),
+                self.graph.adj_lists[node.0].iter().map(|(node, edge)| self.graph.edges[edge.0]).collect::<Vec<_>>(),
             );
         } else {
             self.past_start_infections[node.0].insert(time, restart_type);
@@ -169,13 +184,22 @@ impl FollowAlgorithmExecution {
         let (left, right, _) = self.graph.edges[target_edge.0];
 
         let best_candidate = max_by_key(left, right, |node| self.graph.adj_lists[node.0].len());
+        debug!(
+            "Trying to find label of edge {:?}\n\tPrevious start infections: {:?}\n\tAttempts at target edge: {:?}",
+            self.graph.edges[target_edge.0],
+            self.past_start_infections.iter(),
+            self.infection_attempts[target_edge.0].iter()
+        );
 
         // TODO: Try to optimize clone away
         let previously_discovered_edges = self.discovered_edges.clone();
 
         for time in 1..self.graph.tmax.0 {
             // Skip if there was in infection attempt along the target edge at the test time
-            if !self.infection_attempts[target_edge.0][time] {
+            // TODO: Skip if there is a edge between the same nodes with the same label
+            if !self.infection_attempts[target_edge.0][time]
+                && !self.is_start_infection_redundant(&best_candidate, &Time(time - 1))
+            {
                 self.restarts_for_component_discovery += 1;
                 self.try_add_past_start_infection(
                     best_candidate,
@@ -184,7 +208,10 @@ impl FollowAlgorithmExecution {
                 );
                 let (_infection_log, infected_edges) =
                     self.simulate_infection(best_candidate, Time(time - 1));
-                // println!("\t\t\tInfected edges: {:?}", infected_edges);
+
+                // After "testing" the `target_edge` should have an infection attempt at the
+                // currently checked time
+                assert!(self.infection_attempts[target_edge.0][time]);
 
                 // TODO: If still neccessary, update todo_start_infections here
                 for edge in infected_edges {
@@ -195,7 +222,12 @@ impl FollowAlgorithmExecution {
             }
         }
 
-        println!("Cloud not find target edge {:?}", target_edge);
+        log::error!(
+            "Cloud not find target edge {:?} ({:?})\n\t{:?}",
+            target_edge,
+            self.graph.edges[target_edge.0],
+            self.graph
+        );
 
         None
     }
@@ -211,7 +243,6 @@ impl FollowAlgorithmExecution {
         // TODO: Short circuit if all edges are discovered
         // println!("Exploring todo start infections");
         // println!("\tQueue: {:?}", self.todo_start_infections);
-
         while !self.todo_start_infections.is_empty() {
             let (node, time) = self.todo_start_infections.pop().unwrap();
             // println!("\tStarting infection at {:?} at {:?}", node, time);
@@ -246,6 +277,17 @@ mod tests {
             vec![
                 (NodeIdx(0), NodeIdx(1), Time(4)),
                 (NodeIdx(1), NodeIdx(2), Time(5)),
+            ],
+            Time(10),
+        )
+    }
+
+    fn generate_example3_multigraph() -> TemporalGraph {
+        TemporalGraph::from_edge_list(
+            vec![
+                (NodeIdx(0), NodeIdx(1), Time(1)),
+                (NodeIdx(0), NodeIdx(1), Time(3)),
+                (NodeIdx(1), NodeIdx(2), Time(2)),
             ],
             Time(10),
         )
@@ -314,9 +356,9 @@ mod tests {
     }
 
     fn has_unique_elements<T>(iter: T) -> bool
-        where
-            T: IntoIterator,
-            T::Item: Eq + Hash,
+    where
+        T: IntoIterator,
+        T::Item: Eq + Hash,
     {
         let mut uniq = HashSet::new();
         iter.into_iter().all(move |x| uniq.insert(x))
@@ -357,5 +399,14 @@ mod tests {
         }
 
         assert_le!(total_follow_restarts, 6 * execution.graph.edge_count());
+    }
+
+    #[test]
+    fn test_correctly_handles_multi_edges() {
+        let mut execution =
+            FollowAlgorithmExecution::new(generate_example3_multigraph(), Args::default());
+        execution.execute();
+
+        assert_all_edges_discovered(&execution);
     }
 }

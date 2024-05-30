@@ -59,3 +59,16 @@ pub fn path_or_relative_to_project_root(path: Option<&PathBuf>, relative_path: &
         result
     })
 }
+
+
+
+pub fn vec_has_duplicates<T: Ord>(mut collection: Vec<T>) -> bool {
+    collection.sort();
+    for i in 0..(collection.len()-1) {
+        if collection[i] == collection[i+1] {
+            return true;
+        }
+    }
+    return false;
+
+}

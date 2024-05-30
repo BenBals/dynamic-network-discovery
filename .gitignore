@@ -1,3 +1,9 @@
 /target
 data
+logs
 *.pdf
+rSettings.xml
+rGraphicsSettings.xml
+.RData
+.Rhistory
+misc.xml
