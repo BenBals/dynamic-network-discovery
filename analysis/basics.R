@@ -29,9 +29,15 @@ data_snap <- data_snap %>% mutate(source = "snap")
 
 data <- bind_rows(data_skipped, data_unskipped)
 
-plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_variable = NULL, title = "") {
+plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_variable = NULL, title = "", color = TRUE) {
+  this_aes <- if (color) {
+    aes(x = edge_count, y = !!sym(var), color = probability_fac)
+  } else {
+    aes(x = edge_count, y = !!sym(var))
+  }
+
   plot <- dat %>%
-    ggplot(aes(x = edge_count, y = !!sym(var), color = probability_fac)) +
+    ggplot(this_aes) +
     geom_point() +
     # geom_abline(slope = 6) +
     scale_color_discrete() +
@@ -47,7 +53,8 @@ plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_v
   if (logged) {
     plot <- plot +
       scale_x_log10() +
-      scale_y_log10()
+      scale_y_log10() +
+      geom_function(fun = function (edges) {return(6 * edges)}, color = "black")
   }
 
   if (!logged) {
@@ -71,9 +78,12 @@ plot_variable_against_edges(
   "Restarts",
   logged = TRUE,
   facet_variable = "probability_fac",
-  title = "Follow algorithm Erdős-Renyi graphs with different densities")
+  # title = "Follow algorithm Erdős-Renyi graphs with different densities"
+  )
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"))
-plot_variable_against_edges(data_snap, "restarts", "Restarts", facet_variable = "source", title = "SNAP Networks")
+plot_variable_against_edges(data_snap, "restarts", "Restarts",
+                            # title = "SNAP Networks",
+                            color = FALSE)
 ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"))
 
 summary(data_skipped$restarts_per_edge)
@@ -89,8 +99,8 @@ data_skipped %>%
   summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
   ggplot(aes(x = probability_fac, y = mean_component_discovery_percentage)) +
   geom_col() +
-  labs(x = "p", y = "Percentage of restarts due to component discovery")
-ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_skipped}.pdf"))
+  labs(x = "p", y = "Percentage of restarts \n due to component discovery")
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_skipped}.pdf"), height = 3)
 
 
 data %>% filter(restarts_for_following > 6 * edge_count)
