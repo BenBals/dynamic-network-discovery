@@ -4,22 +4,19 @@ mod follow_algorithm;
 mod temporal_graph;
 
 use chrono::{DateTime, Utc}; // 0.4.15
-use clap::{Arg, Parser};
+use clap::{Parser};
 use csv;
-use derive_more::Add;
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rand::rngs::StdRng;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{RngCore, SeedableRng};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::fs::File;
-use std::ops::AddAssign;
 use std::time::SystemTime;
 use std::{error::Error, fs, io};
 
 use rand::prelude::SliceRandom;
-use std::io::BufRead;
-use log::{error, info};
+use log::{info};
 
 use temporal_graph::common::*;
 use follow_algorithm::*;
@@ -55,8 +52,10 @@ fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> 
 }
 
 const MAX_NODES: usize = 500;
+const NODES_STEP_SIZE: usize = 3;
 const REPEATS: usize = 5;
 const PROBABILITIES: [f64; 7] = [0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 0.9];
+const TMAX_FACTORS: [f64; 6] = [0.05, 0.3, 0.5, 1.0, 3.0, 10.0];
 
 #[derive(Debug, Clone)]
 struct ExperimentTask {
@@ -72,20 +71,22 @@ fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
     let mut shared_rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(args.seed));
 
     for probability in PROBABILITIES {
-        for nodes in 1..=MAX_NODES {
-            for _repeat in 1..=REPEATS {
-                tasks.push(ExperimentTask {
-                    // While deterministically generating graph is significantly slower, it makes
-                    // comparing results between different configurations of the follow algorithm
-                    // much more meaningful
-                    graph: TemporalGraph::gen_erdos_renyi_with_rng(
-                        nodes,
-                        Time(nodes),
-                        probability,
-                        &mut shared_rng,
-                    ),
-                    probability: probability,
-                });
+        for nodes in (1..=MAX_NODES).step_by(NODES_STEP_SIZE) {
+            for tmax_factor in TMAX_FACTORS {
+                for _repeat in 1..=REPEATS {
+                    tasks.push(ExperimentTask {
+                        // While deterministically generating graphs is significantly slower, it makes
+                        // comparing results between different configurations of the follow algorithm
+                        // much more meaningful
+                        graph: TemporalGraph::gen_erdos_renyi_with_rng(
+                            nodes,
+                            Time((nodes as f64 * tmax_factor).floor().max(2.0) as usize),
+                            probability,
+                            &mut shared_rng,
+                        ),
+                        probability: probability,
+                    });
+                }
             }
         }
     }

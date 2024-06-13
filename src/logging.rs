@@ -1,7 +1,7 @@
 //! helper functions for the logging backend
 // Adapted from https://gitlab.hpi.de/wasletztepreis_bp/db_scripts/-/blob/master/rust-db/common/src/logging.rs
 use crate::util::find_project_root;
-use flexi_logger::{self, writers::FileLogWriter, Duplicate, Logger, FileSpec};
+use flexi_logger::{self, Duplicate, Logger, FileSpec};
 use log::Level::Warn;
 use std::fs;
 

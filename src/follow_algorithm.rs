@@ -1,6 +1,6 @@
 use crate::temporal_graph::common::*;
 use crate::{Args, TemporalGraph};
-use log::{debug, info};
+use log::{debug};
 use std::cmp::max_by_key;
 use std::collections::HashMap;
 
@@ -150,7 +150,7 @@ impl FollowAlgorithmExecution {
             panic!(
                 "Tried to duplicate start infection (node: {:?}, time: {:?}, new type: {:?}, old type: {:?})\n\t{:?}",
                 node, time, restart_type, self.past_start_infections[node.0].get(&time),
-                self.graph.adj_lists[node.0].iter().map(|(node, edge)| self.graph.edges[edge.0]).collect::<Vec<_>>(),
+                self.graph.adj_lists[node.0].iter().map(|(_node, edge)| self.graph.edges[edge.0]).collect::<Vec<_>>(),
             );
         } else {
             self.past_start_infections[node.0].insert(time, restart_type);

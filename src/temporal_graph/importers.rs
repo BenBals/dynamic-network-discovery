@@ -1,9 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::io::ErrorKind::UnexpectedEof;
 use std::path::Path;
+use more_asserts::assert_ge;
 use rand::{Rng, RngCore, SeedableRng, thread_rng};
 use rand::prelude::StdRng;
 
@@ -32,6 +33,8 @@ impl TemporalGraph {
         rng: &mut Box<dyn RngCore>,
     ) -> TemporalGraph {
         let mut adj_lists = vec![vec![]; size];
+
+        assert_ge!(tmax.0, 1);
 
         let mut edges =
             Vec::with_capacity((probability * size as f64 * size as f64).ceil() as usize);
