@@ -18,11 +18,13 @@ read_experiment_results <- function(timestamp) {
 timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
 timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
 timestamp_different_tmax <- "2024-06-13T09:38:57.472962921+00:00"
+timestamp_few_nodes_many_p <- "2024-06-14T09:31:40.587413824+00:00"
 timestamp_snap_all <- "2024-05-29T14:45:12.664694+00:00"
 
 data_skipped <- read_experiment_results(timestamp_skipped)
 data_unskipped <- read_experiment_results(timestamp_unskipped)
 data_different_tmax <- read_experiment_results(timestamp_different_tmax)
+data_few_nodes_many_p <- read_experiment_results(timestamp_few_nodes_many_p)
 data_snap <- read_experiment_results(timestamp_snap_all)
 
 data_skipped <- data_skipped %>% mutate(optimization = "skipped")
@@ -127,13 +129,15 @@ summary(data_unskipped$component_discovery_percentage)
 summary(data_skipped$restarts_for_component_discovery)
 summary(data_unskipped$restarts_for_component_discovery)
 
-data_skipped %>%
+data_few_nodes_many_p %>%
   group_by(probability_fac) %>%
   summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
-  ggplot(aes(x = probability_fac, y = mean_component_discovery_percentage)) +
+  mutate(probability = as.numeric(as.character(probability_fac))) %>%
+  ggplot(aes(x = probability, y = mean_component_discovery_percentage)) +
   geom_col() +
+  scale_x_continuous() +
   labs(x = "p", y = "Percentage of restarts \n due to component discovery")
-ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_skipped}.pdf"), height = 3)
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
 
 data %>% filter(restarts_for_following > 6 * edge_count)
