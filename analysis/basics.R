@@ -17,10 +17,12 @@ read_experiment_results <- function(timestamp) {
 
 timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
 timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
+timestamp_different_tmax <- "2024-06-13T09:38:57.472962921+00:00"
 timestamp_snap_all <- "2024-05-29T14:45:12.664694+00:00"
 
 data_skipped <- read_experiment_results(timestamp_skipped)
 data_unskipped <- read_experiment_results(timestamp_unskipped)
+data_different_tmax <- read_experiment_results(timestamp_different_tmax)
 data_snap <- read_experiment_results(timestamp_snap_all)
 
 data_skipped <- data_skipped %>% mutate(optimization = "skipped")
@@ -29,11 +31,21 @@ data_snap <- data_snap %>% mutate(source = "snap")
 
 data <- bind_rows(data_skipped, data_unskipped)
 
-plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_variable = NULL, title = "", color = TRUE) {
+plot_variable <- function(
+  dat,
+  var_y,
+  label_y,
+  var_x = "edge_count",
+  label_x = "Edge count",
+  logged = FALSE,
+  facet_variable = NULL,
+  title = "",
+  color = TRUE,
+  abline = TRUE) {
   this_aes <- if (color) {
-    aes(x = edge_count, y = !!sym(var), color = probability_fac)
+    aes(x = !!sym(var_x), y = !!sym(var_y), color = probability_fac)
   } else {
-    aes(x = edge_count, y = !!sym(var))
+    aes(x = !!sym(var_x), y = !!sym(var_y))
   }
 
   plot <- dat %>%
@@ -42,7 +54,7 @@ plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_v
     # geom_abline(slope = 6) +
     scale_color_discrete() +
     geom_smooth(method = lm, color = "red") +
-    labs(x = "Edge count", y = label, color = "p") +
+    labs(x = label_x, y = label_y, color = "p") +
     ggtitle(title)
 
   if (!is.null(facet_variable)) {
@@ -57,7 +69,7 @@ plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_v
       geom_function(fun = function (edges) {return(6 * edges)}, color = "black")
   }
 
-  if (!logged) {
+  if (!logged & abline) {
     plot <- plot +
       geom_segment(aes(x = 0, y = 0, xend = max(edge_count), yend = 6 * max(edge_count)), color = "black")
   }
@@ -65,14 +77,14 @@ plot_variable_against_edges <- function(dat, var, label, logged = FALSE, facet_v
   return(plot)
 }
 
-plot_variable_against_edges(data, "restarts", "Restarts", logged = FALSE, facet_variable = "optimization",
+plot_variable(data, "restarts", "Restarts", logged = FALSE, facet_variable = "optimization",
                             title = "Follow algorithm Erdős-Renyi graphs with different densities")
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-{timestamp_skipped}.pdf"))
-plot_variable_against_edges(data, "restarts_for_following", "Restarts (following only)", logged = FALSE,
+plot_variable(data, "restarts_for_following", "Restarts (following only)", logged = FALSE,
                             title = "Follow algorithm Erdős-Renyi graphs with different densities")
 ggsave(glue("./export/erdos-renyi_restarts-for-following-by-edge-count-{timestamp_skipped}.pdf"))
-plot_variable_against_edges(data %>% filter(probability == 0.3), "restarts", "Restarts", logged = TRUE)
-plot_variable_against_edges(
+plot_variable(data %>% filter(probability == 0.3), "restarts", "Restarts", logged = TRUE)
+plot_variable(
   data %>% filter(skipped_redundant_infections == TRUE),
   "restarts",
   "Restarts",
@@ -81,10 +93,31 @@ plot_variable_against_edges(
   # title = "Follow algorithm Erdős-Renyi graphs with different densities"
   )
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"))
-plot_variable_against_edges(data_snap, "restarts", "Restarts",
+plot_variable(data_different_tmax, "restarts", "Restarts")
+
+plot_variable(data_snap, "restarts", "Restarts",
                             # title = "SNAP Networks",
                             color = FALSE)
 ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"))
+
+plot_variable(data_skipped,
+              "component_discovery_percentage",
+              "Component discovery percentage",
+              abline = FALSE)
+
+plot_variable(data_different_tmax,
+              "component_discovery_percentage",
+              "Component discovery percentage",
+              abline = FALSE)
+
+plot_variable(data_different_tmax,
+              "component_discovery_percentage",
+              "Component discovery percentage",
+              var_x = "tmax",
+              label_x = "Tmax",
+              abline = FALSE,
+              logged = FALSE)
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-tmax-{timestamp_different_tmax}.pdf"))
 
 summary(data_skipped$restarts_per_edge)
 
