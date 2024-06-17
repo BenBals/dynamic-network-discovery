@@ -51,7 +51,7 @@ fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-const MAX_NODES: usize = 100;
+const MAX_NODES: usize = 300;
 const NODES_STEP_SIZE: usize = 10;
 const REPEATS: usize = 100;
 const PROBABILITIES: [f64; 12] = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25,  0.3, 0.35, 0.4, 0.5, 0.7, 0.9];

@@ -12,13 +12,15 @@ read_experiment_results <- function(timestamp) {
   data$component_discovery_percentage <- data$restarts_for_component_discovery / data$restarts
   data$restarts_for_following <- data$restarts - data$restarts_for_component_discovery
   data$restarts_per_edge <- data$restarts / data$edge_count
+  data$tmax_over_p <- data$tmax / data$probability
+  data$tmax_over_n_times_p <- data$tmax / (data$node_count * data$probability)
   return(data)
 }
 
 timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
 timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
 timestamp_different_tmax <- "2024-06-13T09:38:57.472962921+00:00"
-timestamp_few_nodes_many_p <- "2024-06-14T09:47:16.978393+00:00"
+timestamp_few_nodes_many_p <- "2024-06-14T09:57:09.675083+00:00"
 timestamp_snap_all <- "2024-05-29T14:45:12.664694+00:00"
 
 data_skipped <- read_experiment_results(timestamp_skipped)
@@ -150,6 +152,28 @@ data_few_nodes_many_p %>%
   geom_col() +
   scale_x_continuous() +
   labs(x = "Tmax", y = "Percentage of restarts \n due to component discovery")
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
+
+data_few_nodes_many_p %>%
+  # filter(node_count == 91) %>%
+  group_by(tmax_over_p, node_count) %>%
+  summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
+  ggplot(aes(x = tmax_over_p, y = mean_component_discovery_percentage, color=node_count)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_color_continuous(type = "viridis") +
+  labs(x = "Tmax / p", y = "Percentage of restarts \n due to component discovery")
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-over-p-{timestamp_few_nodes_many_p}.pdf"))
+
+data_few_nodes_many_p %>%
+  group_by(tmax_over_n_times_p, node_count) %>%
+  summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
+  ggplot(aes(x = tmax_over_n_times_p, y = mean_component_discovery_percentage, color=node_count)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_color_continuous(type = "viridis") +
+  labs(x = "Tmax / (n * p)", y = "Percentage of restarts \n due to component discovery")
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-over-n-times-p-{timestamp_few_nodes_many_p}.pdf"))
 
 data %>% filter(restarts_for_following > 6 * edge_count)
