@@ -34,6 +34,7 @@ struct ExperimentResult {
     skipped_redundant_infections: bool,
     component_count: usize,
     component_max_size: usize,
+    component_mean_size: f64,
 }
 
 fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> {
@@ -192,6 +193,8 @@ fn main() -> io::Result<()> {
                 skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
                 component_count: components.len(),
                 component_max_size: largest_component,
+                component_mean_size: (components.iter().map(Vec::len).sum::<usize>() as f64)
+                    / components.len() as f64,
             }
         })
         .collect();

@@ -1,1 +1,1 @@
-enroot start -r -rw --mount ~:/mnt fedora
+enroot start -r --rw --mount ~:/mnt fedora

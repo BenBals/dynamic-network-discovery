@@ -20,7 +20,7 @@ read_experiment_results <- function(timestamp) {
 timestamp_skipped <- "2024-05-22T18:32:26.609045625+00:00"
 timestamp_unskipped <- "2024-05-22T18:32:27.721986939+00:00"
 timestamp_different_tmax <- "2024-06-13T09:38:57.472962921+00:00"
-timestamp_few_nodes_many_p <- "2024-06-14T09:57:09.675083+00:00"
+timestamp_few_nodes_many_p <- "2024-06-19T13:48:42.697546+00:00"
 timestamp_snap_all <- "2024-05-29T14:45:12.664694+00:00"
 
 data_skipped <- read_experiment_results(timestamp_skipped)
@@ -133,24 +133,37 @@ summary(data_unskipped$restarts_for_component_discovery)
 
 View(data_few_nodes_many_p)
 
-data_few_nodes_many_p %>%
-  filter(node_count == 91) %>%
-  group_by(probability_fac) %>%
-  summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
-  mutate(probability = as.numeric(as.character(probability_fac))) %>%
-  ggplot(aes(x = probability, y = mean_component_discovery_percentage)) +
-  geom_col() +
-  scale_x_continuous() +
+plot_summary <- function(data, x_var, grouping_var, mean_var) {
+  data <- data %>%
+    group_by(!!sym(grouping_var)) %>%
+    summarise(summarised = mean(!!sym(mean_var), na.rm = TRUE))
+
+  if (grouping_var == "probability_fac") {
+    data <- data %>%
+      mutate(probability = as.numeric(as.character(probability_fac)))
+  }
+
+  return(data %>%
+    ggplot(aes(x = !!sym(x_var), y = summarised)) +
+    geom_col() +
+    scale_x_continuous()
+  )
+}
+
+plot_summary(
+  data_few_nodes_many_p %>% filter(node_count == 41),
+  "probability",
+  "probability_fac",
+  "component_discovery_percentage") +
   labs(x = "p", y = "Percentage of restarts \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
-data_few_nodes_many_p %>%
-  filter(node_count == 91) %>%
-  group_by(tmax) %>%
-  summarise(mean_component_discovery_percentage = mean(component_discovery_percentage, na.rm = TRUE)) %>%
-  ggplot(aes(x = tmax, y = mean_component_discovery_percentage)) +
-  geom_col() +
-  scale_x_continuous() +
+
+plot_summary(
+  data_few_nodes_many_p %>% filter(node_count == 41),
+  "tmax",
+  "tmax",
+  "component_discovery_percentage") +
   labs(x = "Tmax", y = "Percentage of restarts \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
@@ -175,5 +188,25 @@ data_few_nodes_many_p %>%
   scale_color_continuous(type = "viridis") +
   labs(x = "Tmax / (n * p)", y = "Percentage of restarts \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-over-n-times-p-{timestamp_few_nodes_many_p}.pdf"))
+
+data_few_nodes_many_p %>%
+  group_by(tmax_over_n_times_p, node_count) %>%
+  summarise(mean_component_count = mean(component_count, na.rm = TRUE)) %>%
+  ggplot(aes(x = tmax_over_n_times_p, y = mean_component_count, color=node_count)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_color_continuous(type = "viridis") +
+  labs(x = "Tmax / (n * p)", y = "Mean component count")
+
+
+data_few_nodes_many_p %>%
+  group_by(tmax_over_n_times_p, node_count) %>%
+  summarise(mean_component_max_size = mean(component_max_size, na.rm = TRUE)) %>%
+  ggplot(aes(x = tmax_over_n_times_p, y = mean_component_max_size, color=node_count)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_color_continuous(type = "viridis") +
+  labs(x = "Tmax / (n * p)", y = "Mean max component size")
+
 
 data %>% filter(restarts_for_following > 6 * edge_count)
