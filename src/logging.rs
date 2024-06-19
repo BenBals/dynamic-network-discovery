@@ -1,7 +1,7 @@
 //! helper functions for the logging backend
 // Adapted from https://gitlab.hpi.de/wasletztepreis_bp/db_scripts/-/blob/master/rust-db/common/src/logging.rs
 use crate::util::find_project_root;
-use flexi_logger::{self, Duplicate, Logger, FileSpec};
+use flexi_logger::{self, Duplicate, FileSpec, Logger};
 use log::Level::Warn;
 use std::fs;
 
@@ -18,8 +18,7 @@ pub fn init_logging() {
     Logger::try_with_env_or_str("info")
         .expect("Could not construct info logger")
         .format(flexi_logger::colored_opt_format)
-        .log_to_file(FileSpec::default()
-            .directory(output_dir))
+        .log_to_file(FileSpec::default().directory(output_dir))
         .print_message()
         .duplicate_to_stderr(Duplicate::Warn)
         .start()

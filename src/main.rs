@@ -1,10 +1,10 @@
-mod logging;
-mod util;
 mod follow_algorithm;
+mod logging;
 mod temporal_graph;
+mod util;
 
 use chrono::{DateTime, Utc}; // 0.4.15
-use clap::{Parser};
+use clap::Parser;
 use csv;
 use indicatif::{ParallelProgressIterator, ProgressBar};
 use rand::rngs::StdRng;
@@ -15,12 +15,13 @@ use std::fs::File;
 use std::time::SystemTime;
 use std::{error::Error, fs, io};
 
+use log::info;
+use more_asserts::assert_ge;
 use rand::prelude::SliceRandom;
-use log::{info};
 
-use temporal_graph::common::*;
 use follow_algorithm::*;
 use logging::*;
+use temporal_graph::common::*;
 
 #[derive(Debug, Serialize)]
 struct ExperimentResult {
@@ -31,6 +32,8 @@ struct ExperimentResult {
     restarts_for_component_discovery: usize,
     tmax: usize,
     skipped_redundant_infections: bool,
+    component_count: usize,
+    component_max_size: usize,
 }
 
 fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> {
@@ -54,8 +57,13 @@ fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> 
 const MAX_NODES: usize = 300;
 const NODES_STEP_SIZE: usize = 10;
 const REPEATS: usize = 100;
-const PROBABILITIES: [f64; 12] = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25,  0.3, 0.35, 0.4, 0.5, 0.7, 0.9];
-const TMAX_FACTORS: [f64; 26] = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+const PROBABILITIES: [f64; 12] = [
+    0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.7, 0.9,
+];
+const TMAX_FACTORS: [f64; 26] = [
+    0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 2.5,
+    3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+];
 
 #[derive(Debug, Clone)]
 struct ExperimentTask {
@@ -168,6 +176,12 @@ fn main() -> io::Result<()> {
         .map(move |task: &ExperimentTask| {
             let mut execution = FollowAlgorithmExecution::new(task.graph.clone(), args.clone());
             execution.execute();
+            let components = task.graph.delta_egde_connected_components();
+            let largest_component = if task.graph.edge_count() > 0 {
+                components.iter().map(Vec::len).max().unwrap()
+            } else {
+                0
+            };
             ExperimentResult {
                 probability: task.probability,
                 node_count: execution.graph.node_count(),
@@ -176,6 +190,8 @@ fn main() -> io::Result<()> {
                 restarts_for_component_discovery: execution.restarts_for_component_discovery,
                 tmax: task.graph.tmax.0,
                 skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
+                component_count: components.len(),
+                component_max_size: largest_component,
             }
         })
         .collect();

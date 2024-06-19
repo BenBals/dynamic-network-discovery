@@ -1,6 +1,6 @@
 use crate::temporal_graph::common::*;
 use crate::{Args, TemporalGraph};
-use log::{debug};
+use log::debug;
 use std::cmp::max_by_key;
 use std::collections::HashMap;
 

@@ -1,12 +1,12 @@
-use std::collections::{HashSet};
+use more_asserts::assert_ge;
+use rand::prelude::StdRng;
+use rand::{thread_rng, Rng, RngCore, SeedableRng};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::io::ErrorKind::UnexpectedEof;
 use std::path::Path;
-use more_asserts::assert_ge;
-use rand::{Rng, RngCore, SeedableRng, thread_rng};
-use rand::prelude::StdRng;
 
 use super::common::*;
 
@@ -57,21 +57,14 @@ impl TemporalGraph {
         }
     }
 
-
     /// Parse a contact network from the SNAP dataset
     /// Note that because the snap dataset is directed, we add an edge a <-> b where a < b iff there
     /// is an edge a <- b in the dataset
-    pub(crate) fn from_snap_resistance_csv<P>(
-        path: P,
-    ) -> io::Result<TemporalGraph>
+    pub(crate) fn from_snap_resistance_csv<P>(path: P) -> io::Result<TemporalGraph>
     where
         P: AsRef<Path>,
     {
-        let mut edge_list: Vec<(
-            NodeIdx,
-            NodeIdx,
-            Time,
-        )> = Vec::new();
+        let mut edge_list: Vec<(NodeIdx, NodeIdx, Time)> = Vec::new();
         let file = File::open(path)?;
         let mut lines = io::BufReader::new(file).lines().flatten();
 
@@ -85,7 +78,7 @@ impl TemporalGraph {
         //        as usize;
         let adj_matrix_length = first_line?.split(",").count() - 1;
         let n = f64::round(0.5 * (f64::sqrt(4.0 * adj_matrix_length as f64 + 1.0) + 1.0)) as usize;
-        assert_eq!(adj_matrix_length, n * (n-1));
+        assert_eq!(adj_matrix_length, n * (n - 1));
 
         let mut time: usize = 1;
         for line in lines {
@@ -96,11 +89,7 @@ impl TemporalGraph {
                     let to = index % n;
 
                     if to < from {
-                        edge_list.push((
-                            NodeIdx(to),
-                            NodeIdx(from),
-                            Time(time),
-                        ));
+                        edge_list.push((NodeIdx(to), NodeIdx(from), Time(time)));
                     }
                 }
             }
@@ -117,14 +106,14 @@ impl TemporalGraph {
         // Check that the edge list is unique
         let mut edge_set = HashSet::new();
         for edge in &edge_list {
-            assert!(edge_set.insert(edge.clone()), "duplicate edge: {:?} (n = {})", edge, n)
+            assert!(
+                edge_set.insert(edge.clone()),
+                "duplicate edge: {:?} (n = {})",
+                edge,
+                n
+            )
         }
 
-        Ok(
-            TemporalGraph::from_edge_list(
-                edge_list,
-                Time(tmax),
-            ),
-        )
+        Ok(TemporalGraph::from_edge_list(edge_list, Time(tmax)))
     }
 }

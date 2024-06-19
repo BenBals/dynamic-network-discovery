@@ -1,6 +1,12 @@
 //! A module which contains some utility functions
 use serde::Serialize;
-use std::{env, fs::{self, File}, io, io::Write, path::{Path, PathBuf}};
+use std::{
+    env,
+    fs::{self, File},
+    io,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 /// Write something which can be serialized to a json file at the specified path.
 /// Returns an Error if the file can't be written or the directory can't be created.
@@ -36,8 +42,8 @@ pub fn find_project_root() -> io::Result<PathBuf> {
 }
 
 fn has_git_directory<P>(path: P) -> bool
-    where
-        P: AsRef<Path>,
+where
+    P: AsRef<Path>,
 {
     let mut path_buf = path.as_ref().to_path_buf();
     path_buf.push(".git");
@@ -60,15 +66,12 @@ pub fn path_or_relative_to_project_root(path: Option<&PathBuf>, relative_path: &
     })
 }
 
-
-
 pub fn vec_has_duplicates<T: Ord>(mut collection: Vec<T>) -> bool {
     collection.sort();
-    for i in 0..(collection.len()-1) {
-        if collection[i] == collection[i+1] {
+    for i in 0..(collection.len() - 1) {
+        if collection[i] == collection[i + 1] {
             return true;
         }
     }
     return false;
-
 }
