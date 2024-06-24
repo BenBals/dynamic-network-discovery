@@ -1,9 +1,9 @@
 use crate::util::vec_has_duplicates;
 use derive_more::Add;
 use ena::unify::{EqUnifyValue, InPlaceUnificationTable, NoError, UnifyKey, UnifyValue};
+use more_asserts::assert_ge;
 use std::collections::HashMap;
 use std::ops::AddAssign;
-use more_asserts::assert_ge;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub(crate) struct NodeIdx(pub usize);
@@ -61,7 +61,11 @@ impl TemporalGraph {
         u == w || u == z || v == w || v == z
     }
 
-    pub fn from_edge_list(edges: Vec<(NodeIdx, NodeIdx, Time)>, tmax: Time, delta: Time) -> TemporalGraph {
+    pub fn from_edge_list(
+        edges: Vec<(NodeIdx, NodeIdx, Time)>,
+        tmax: Time,
+        delta: Time,
+    ) -> TemporalGraph {
         assert!(!vec_has_duplicates(edges.clone()));
         assert_ge!(delta.0, 1);
 
@@ -107,7 +111,9 @@ impl TemporalGraph {
             delta: Time,
         ) -> Option<EdgeUnifyKey> {
             if let Some((key, inner_time)) = node_component_map[node.0] {
-                if (inner_time.0 - delta.0.min(inner_time.0) <= time.0) & (time.0 <= inner_time.0 + delta.0) {
+                if (inner_time.0 - delta.0.min(inner_time.0) <= time.0)
+                    & (time.0 <= inner_time.0 + delta.0)
+                {
                     // println!("\tRelevant component at node {:?} at time {:?}", node, time);
                     return Some(key);
                 }
@@ -203,8 +209,11 @@ mod tests {
         for e1 in 0..graph.edge_count() {
             for e2 in 0..graph.edge_count() {
                 if graph.are_two_edges_adjacent(EdgeIdx(e1), EdgeIdx(e2))
-                    && graph.edge_label(EdgeIdx(e1)).0 - graph.delta.0.min(graph.edge_label(EdgeIdx(e1)).0) <= graph.edge_label(EdgeIdx(e2)).0
-                    && graph.edge_label(EdgeIdx(e1)).0 + graph.delta.0 >= graph.edge_label(EdgeIdx(e2)).0
+                    && graph.edge_label(EdgeIdx(e1)).0
+                        - graph.delta.0.min(graph.edge_label(EdgeIdx(e1)).0)
+                        <= graph.edge_label(EdgeIdx(e2)).0
+                    && graph.edge_label(EdgeIdx(e1)).0 + graph.delta.0
+                        >= graph.edge_label(EdgeIdx(e2)).0
                 {
                     assert_eq!(id_map[e1], id_map[e2])
                 }
@@ -220,8 +229,13 @@ mod tests {
             for prob in [0.1, 0.3, 0.9] {
                 for tmax in [3, 10, 100] {
                     for delta in [1, 5, 10] {
-                        let graph =
-                            TemporalGraph::gen_erdos_renyi_from_seed(size, Time(tmax), Time(delta), prob, 420);
+                        let graph = TemporalGraph::gen_erdos_renyi_from_seed(
+                            size,
+                            Time(tmax),
+                            Time(delta),
+                            prob,
+                            420,
+                        );
                         assert_connected_components_not_too_fine(&graph);
                     }
                 }

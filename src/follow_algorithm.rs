@@ -305,8 +305,11 @@ mod tests {
 
     #[test]
     fn simulate_infection_example1() {
-        let graph =
-            TemporalGraph::from_edge_list(vec![(NodeIdx(0), NodeIdx(1), Time(4))], Time(10), Time(1));
+        let graph = TemporalGraph::from_edge_list(
+            vec![(NodeIdx(0), NodeIdx(1), Time(4))],
+            Time(10),
+            Time(1),
+        );
         let mut execution = FollowAlgorithmExecution::new(graph, Args::default());
         execution.simulate_infection(NodeIdx(0), Time(4));
         assert!(execution.infection_attempts[0][5]);
@@ -325,7 +328,12 @@ mod tests {
         assert_eq!(execution.discovered_edges_count, 2);
     }
 
-    fn execute_erdos_renyi(nodes: usize, tmax: Time, delta: Time, probability: f64) -> FollowAlgorithmExecution {
+    fn execute_erdos_renyi(
+        nodes: usize,
+        tmax: Time,
+        delta: Time,
+        probability: f64,
+    ) -> FollowAlgorithmExecution {
         let mut execution = FollowAlgorithmExecution::new(
             TemporalGraph::gen_erdos_renyi_from_seed(nodes, tmax, delta, probability, 420),
             Args::default(),

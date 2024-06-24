@@ -117,6 +117,10 @@ impl TemporalGraph {
             )
         }
 
-        Ok(TemporalGraph::from_edge_list(edge_list, Time(tmax), Time(1)))
+        Ok(TemporalGraph::from_edge_list(
+            edge_list,
+            Time(tmax),
+            Time(1),
+        ))
     }
 }

@@ -19,6 +19,7 @@ use log::info;
 use more_asserts::assert_ge;
 use rand::prelude::SliceRandom;
 
+use crate::ExperimentTask::ErdosRenyi;
 use follow_algorithm::*;
 use logging::*;
 use temporal_graph::common::*;
@@ -70,19 +71,37 @@ const TMAX_FACTORS: [f64; 26] = [
 const DELTA_FACTORS: [f64; 8] = [0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5];
 
 #[derive(Debug, Clone)]
-struct ExperimentTask {
-    graph: TemporalGraph,
+enum ExperimentTask {
+    ErdosRenyi(ErdosRenyiTask),
+    Graph(GraphTask),
+}
+
+#[derive(Debug, Clone)]
+struct ErdosRenyiTask {
+    nodes: usize,
+    tmax: Time,
+    delta: Time,
     probability: f64,
+    seed: u64,
+}
+
+#[derive(Debug, Clone)]
+struct GraphTask {
+    graph: TemporalGraph,
 }
 
 fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
-    let iterations = MAX_NODES / NODES_STEP_SIZE * REPEATS * PROBABILITIES.len() * TMAX_FACTORS.len() * DELTA_FACTORS.len();
-    let mut task_settings = Vec::with_capacity(iterations);
+    let iterations = MAX_NODES / NODES_STEP_SIZE
+        * REPEATS
+        * PROBABILITIES.len()
+        * TMAX_FACTORS.len()
+        * DELTA_FACTORS.len();
+    let mut tasks = Vec::with_capacity(iterations);
 
     // For deterministic graph generation
     let mut shared_rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(args.seed));
 
-    log::info!("Generating task settings...");
+    log::info!("Generating tasks...");
 
     for probability in PROBABILITIES {
         for nodes in (1..=MAX_NODES).step_by(NODES_STEP_SIZE) {
@@ -90,37 +109,19 @@ fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
                 for delta_factor in DELTA_FACTORS {
                     for _repeat in 1..=REPEATS {
                         let tmax = (nodes as f64 * tmax_factor).floor().max(2.0) as usize;
-                        let delta= (tmax as f64 * delta_factor).floor().max(1.0) as usize;
-                        task_settings.push((nodes, tmax, delta, probability, shared_rng.next_u64()))
+                        let delta = (tmax as f64 * delta_factor).floor().max(1.0) as usize;
+                        tasks.push(ExperimentTask::ErdosRenyi(ErdosRenyiTask {
+                            nodes,
+                            tmax: Time(tmax),
+                            delta: Time(delta),
+                            seed: shared_rng.next_u64(),
+                            probability: probability,
+                        }));
                     }
                 }
             }
         }
     }
-
-    log::info!("Generating graphs...");
-    let bar = ProgressBar::new(task_settings.len() as u64);
-
-    let mut tasks: Vec<ExperimentTask> = task_settings
-        .par_iter()
-        .progress_with(bar)
-        .map(|(nodes, tmax, delta, probability, rng_seed)| {
-            let mut rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(*rng_seed));
-            ExperimentTask {
-                // While deterministically generating graphs is significantly slower, it makes
-                // comparing results between different configurations of the follow algorithm
-                // much more meaningful
-                graph: TemporalGraph::gen_erdos_renyi_with_rng(
-                    *nodes,
-                    Time(*tmax),
-                    Time(*delta),
-                    *probability,
-                    &mut rng,
-                ),
-                probability: *probability,
-            }
-        })
-        .collect();
 
     tasks.shuffle(&mut shared_rng);
 
@@ -130,10 +131,9 @@ fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
 fn generate_snap_resistance_csv_tasks(args: &Args) -> io::Result<Vec<ExperimentTask>> {
     let mut tasks = Vec::with_capacity(args.from_snap_resistance_files.len());
     for path in &args.from_snap_resistance_files {
-        tasks.push(ExperimentTask {
+        tasks.push(ExperimentTask::Graph(GraphTask {
             graph: TemporalGraph::from_snap_resistance_csv(path)?,
-            probability: f64::NAN,
-        })
+        }))
     }
     Ok(tasks)
 }
@@ -198,22 +198,38 @@ fn main() -> io::Result<()> {
         .par_iter()
         .progress_with(bar)
         .map(move |task: &ExperimentTask| {
-            let mut execution = FollowAlgorithmExecution::new(task.graph.clone(), args.clone());
+            let graph = match task {
+                ExperimentTask::Graph(graph_task) => graph_task.graph.clone(),
+                ExperimentTask::ErdosRenyi(erdos_renyi_task) => {
+                    TemporalGraph::gen_erdos_renyi_from_seed(
+                        erdos_renyi_task.nodes,
+                        erdos_renyi_task.tmax,
+                        erdos_renyi_task.delta,
+                        erdos_renyi_task.probability,
+                        erdos_renyi_task.seed,
+                    )
+                }
+            };
+            let mut execution = FollowAlgorithmExecution::new(graph.clone(), args.clone());
             execution.execute();
-            let components = task.graph.delta_egde_connected_components();
-            let largest_component = if task.graph.edge_count() > 0 {
+            let components = graph.delta_egde_connected_components();
+            let largest_component = if graph.edge_count() > 0 {
                 components.iter().map(Vec::len).max().unwrap()
             } else {
                 0
             };
+            let probability = match task {
+                ExperimentTask::Graph(_) => f64::NAN,
+                ExperimentTask::ErdosRenyi(erdos_renyi_task) => erdos_renyi_task.probability,
+            };
             ExperimentResult {
-                probability: task.probability,
+                probability: probability,
                 node_count: execution.graph.node_count(),
                 edge_count: execution.graph.edge_count(),
                 restarts: execution.number_of_restarts(),
                 restarts_for_component_discovery: execution.restarts_for_component_discovery,
-                tmax: task.graph.tmax.0,
-                delta: task.graph.delta.0,
+                tmax: graph.tmax.0,
+                delta: graph.delta.0,
                 skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
                 component_count: components.len(),
                 component_max_size: largest_component,
