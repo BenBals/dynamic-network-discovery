@@ -31,6 +31,7 @@ struct ExperimentResult {
     restarts: usize,
     restarts_for_component_discovery: usize,
     tmax: usize,
+    delta: usize,
     skipped_redundant_infections: bool,
     component_count: usize,
     component_max_size: usize,
@@ -66,6 +67,8 @@ const TMAX_FACTORS: [f64; 26] = [
     3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
 ];
 
+const DELTA_FACTORS: [f64; 2] = [0.01, 0.5];
+
 #[derive(Debug, Clone)]
 struct ExperimentTask {
     graph: TemporalGraph,
@@ -82,19 +85,24 @@ fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
     for probability in PROBABILITIES {
         for nodes in (1..=MAX_NODES).step_by(NODES_STEP_SIZE) {
             for tmax_factor in TMAX_FACTORS {
-                for _repeat in 1..=REPEATS {
-                    tasks.push(ExperimentTask {
-                        // While deterministically generating graphs is significantly slower, it makes
-                        // comparing results between different configurations of the follow algorithm
-                        // much more meaningful
-                        graph: TemporalGraph::gen_erdos_renyi_with_rng(
-                            nodes,
-                            Time((nodes as f64 * tmax_factor).floor().max(2.0) as usize),
-                            probability,
-                            &mut shared_rng,
-                        ),
-                        probability: probability,
-                    });
+                for delta_factor in DELTA_FACTORS {
+                    for _repeat in 1..=REPEATS {
+                        let tmax = (nodes as f64 * tmax_factor).floor().max(2.0) as usize;
+                        let delta= (tmax as f64 * delta_factor).floor().max(1.0) as usize;
+                        tasks.push(ExperimentTask {
+                            // While deterministically generating graphs is significantly slower, it makes
+                            // comparing results between different configurations of the follow algorithm
+                            // much more meaningful
+                            graph: TemporalGraph::gen_erdos_renyi_with_rng(
+                                nodes,
+                                Time(tmax),
+                                Time(delta),
+                                probability,
+                                &mut shared_rng,
+                            ),
+                            probability: probability,
+                        });
+                    }
                 }
             }
         }
@@ -190,6 +198,7 @@ fn main() -> io::Result<()> {
                 restarts: execution.number_of_restarts(),
                 restarts_for_component_discovery: execution.restarts_for_component_discovery,
                 tmax: task.graph.tmax.0,
+                delta: task.graph.delta.0,
                 skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
                 component_count: components.len(),
                 component_max_size: largest_component,

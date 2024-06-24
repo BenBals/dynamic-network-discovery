@@ -11,24 +11,26 @@ use std::path::Path;
 use super::common::*;
 
 impl TemporalGraph {
-    fn gen_erdos_renyi(size: usize, tmax: Time, probability: f64) -> TemporalGraph {
+    fn gen_erdos_renyi(size: usize, tmax: Time, delta: Time, probability: f64) -> TemporalGraph {
         let mut rng: Box<dyn RngCore> = Box::new(thread_rng());
-        Self::gen_erdos_renyi_with_rng(size, tmax, probability, &mut rng)
+        Self::gen_erdos_renyi_with_rng(size, tmax, delta, probability, &mut rng)
     }
 
     pub fn gen_erdos_renyi_from_seed(
         size: usize,
         tmax: Time,
+        delta: Time,
         probability: f64,
         seed: u64,
     ) -> TemporalGraph {
         let mut rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(seed));
-        Self::gen_erdos_renyi_with_rng(size, tmax, probability, &mut rng)
+        Self::gen_erdos_renyi_with_rng(size, tmax, delta, probability, &mut rng)
     }
 
     pub fn gen_erdos_renyi_with_rng(
         size: usize,
         tmax: Time,
+        delta: Time,
         probability: f64,
         rng: &mut Box<dyn RngCore>,
     ) -> TemporalGraph {
@@ -54,6 +56,7 @@ impl TemporalGraph {
             tmax,
             edges,
             adj_lists,
+            delta,
         }
     }
 
@@ -114,6 +117,6 @@ impl TemporalGraph {
             )
         }
 
-        Ok(TemporalGraph::from_edge_list(edge_list, Time(tmax)))
+        Ok(TemporalGraph::from_edge_list(edge_list, Time(tmax), Time(1)))
     }
 }

@@ -279,6 +279,7 @@ mod tests {
                 (NodeIdx(1), NodeIdx(2), Time(5)),
             ],
             Time(10),
+            Time(1),
         )
     }
 
@@ -290,17 +291,18 @@ mod tests {
                 (NodeIdx(1), NodeIdx(2), Time(2)),
             ],
             Time(10),
+            Time(1),
         )
     }
 
     fn generate_n100_erdos_renyi_graph() -> TemporalGraph {
-        TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), 0.5, 420)
+        TemporalGraph::gen_erdos_renyi_from_seed(100, Time(100), Time(1), 0.5, 420)
     }
 
     #[test]
     fn simulate_infection_example1() {
         let graph =
-            TemporalGraph::from_edge_list(vec![(NodeIdx(0), NodeIdx(1), Time(4))], Time(10));
+            TemporalGraph::from_edge_list(vec![(NodeIdx(0), NodeIdx(1), Time(4))], Time(10), Time(1));
         let mut execution = FollowAlgorithmExecution::new(graph, Args::default());
         execution.simulate_infection(NodeIdx(0), Time(4));
         assert!(execution.infection_attempts[0][5]);
@@ -319,9 +321,9 @@ mod tests {
         assert_eq!(execution.discovered_edges_count, 2);
     }
 
-    fn execute_erdos_renyi(nodes: usize, tmax: Time, probability: f64) -> FollowAlgorithmExecution {
+    fn execute_erdos_renyi(nodes: usize, tmax: Time, delta: Time, probability: f64) -> FollowAlgorithmExecution {
         let mut execution = FollowAlgorithmExecution::new(
-            TemporalGraph::gen_erdos_renyi_from_seed(nodes, tmax, probability, 420),
+            TemporalGraph::gen_erdos_renyi_from_seed(nodes, tmax, delta, probability, 420),
             Args::default(),
         );
 
@@ -385,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_at_most_6m_following_restarts() {
-        let execution = execute_erdos_renyi(100, Time(100), 0.2);
+        let execution = execute_erdos_renyi(100, Time(100), Time(1), 0.2);
 
         let mut total_follow_restarts = 0;
 
