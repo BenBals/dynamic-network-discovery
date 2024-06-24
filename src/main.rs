@@ -59,13 +59,13 @@ fn write_results(results: &Vec<ExperimentResult>) -> Result<(), Box<dyn Error>> 
 
 const MAX_NODES: usize = 200;
 const NODES_STEP_SIZE: usize = 10;
-const REPEATS: usize = 50;
+const REPEATS: usize = 25;
 const PROBABILITIES: [f64; 12] = [
     0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.7, 0.9,
 ];
-const TMAX_FACTORS: [f64; 26] = [
-    0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 2.5,
-    3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+const TMAX_FACTORS: [f64; 19] = [
+    0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 2.5,
+    3.0, 5.0, 7.0, 9.0, 10.0,
 ];
 
 const DELTA_FACTORS: [f64; 5] = [0.01, 0.05, 0.1, 0.3, 0.5];
