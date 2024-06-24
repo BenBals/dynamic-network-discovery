@@ -68,7 +68,7 @@ const TMAX_FACTORS: [f64; 19] = [
     3.0, 5.0, 7.0, 9.0, 10.0,
 ];
 
-const DELTA_FACTORS: [f64; 5] = [0.01, 0.05, 0.1, 0.3, 0.5];
+const DELTA_FACTORS: [f64; 6] = [0.0, 0.01, 0.05, 0.1, 0.3, 0.5];
 
 #[derive(Debug, Clone)]
 enum ExperimentTask {
