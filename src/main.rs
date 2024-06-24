@@ -211,10 +211,10 @@ fn main() -> io::Result<()> {
                     )
                 }
             };
-            let mut execution = FollowAlgorithmExecution::new(graph.clone(), args.clone());
+            let mut execution = FollowAlgorithmExecution::new(graph, args.clone());
             execution.execute();
-            let components = graph.delta_egde_connected_components();
-            let largest_component = if graph.edge_count() > 0 {
+            let components = execution.graph.delta_egde_connected_components();
+            let largest_component = if execution.graph.edge_count() > 0 {
                 components.iter().map(Vec::len).max().unwrap()
             } else {
                 0
@@ -229,8 +229,8 @@ fn main() -> io::Result<()> {
                 edge_count: execution.graph.edge_count(),
                 restarts: execution.number_of_restarts(),
                 restarts_for_component_discovery: execution.restarts_for_component_discovery,
-                tmax: graph.tmax.0,
-                delta: graph.delta.0,
+                tmax: execution.graph.tmax.0,
+                delta: execution.graph.delta.0,
                 skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
                 component_count: components.len(),
                 component_max_size: largest_component,
