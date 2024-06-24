@@ -149,12 +149,15 @@ struct Args {
     seed: u64,
     #[arg(long, num_args = 1..10000)]
     from_snap_resistance_files: Vec<String>,
+    #[arg(long)]
+    single_large_graph: bool,
 }
 
 impl Args {
     fn default_with_seed(seed: u64) -> Args {
         Args {
             dont_skip_redundant_start_infections: false,
+            single_large_graph: false,
             from_snap_resistance_files: Vec::new(),
             seed,
         }
@@ -163,6 +166,7 @@ impl Args {
     fn erdos_renyi(seed: u64, dont_skip_redundant_start_infections: bool) -> Args {
         Args {
             dont_skip_redundant_start_infections,
+            single_large_graph: false,
             seed,
             from_snap_resistance_files: Vec::new(),
         }
@@ -173,6 +177,7 @@ impl Default for Args {
     fn default() -> Self {
         Args {
             dont_skip_redundant_start_infections: false,
+            single_large_graph: false,
             seed: 42,
             from_snap_resistance_files: Vec::new(),
         }
@@ -192,55 +197,66 @@ fn main() -> io::Result<()> {
     };
 
     let bar = ProgressBar::new(tasks.len() as u64);
-    bar.set_style(indicatif::ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})").unwrap());
+    bar.set_style(
+        indicatif::ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+        )
+        .unwrap(),
+    );
     log::info!("Solving graphs...");
 
-    let results: Vec<ExperimentResult> = tasks
-        .par_iter()
-        .progress_with(bar)
-        .map(move |task: &ExperimentTask| {
-            let graph = match task {
-                ExperimentTask::Graph(graph_task) => graph_task.graph.clone(),
-                ExperimentTask::ErdosRenyi(erdos_renyi_task) => {
-                    TemporalGraph::gen_erdos_renyi_from_seed(
-                        erdos_renyi_task.nodes,
-                        erdos_renyi_task.tmax,
-                        erdos_renyi_task.delta,
-                        erdos_renyi_task.probability,
-                        erdos_renyi_task.seed,
-                    )
+    if args.single_large_graph {
+        let graph = TemporalGraph::gen_erdos_renyi_from_seed(300, Time(1000), Time(10), 0.1, 42);
+        let mut execution = FollowAlgorithmExecution::new(graph, args.clone());
+        execution.execute();
+    } else {
+        let results: Vec<ExperimentResult> = tasks
+            .par_iter()
+            .progress_with(bar)
+            .map(move |task: &ExperimentTask| {
+                let graph = match task {
+                    ExperimentTask::Graph(graph_task) => graph_task.graph.clone(),
+                    ExperimentTask::ErdosRenyi(erdos_renyi_task) => {
+                        TemporalGraph::gen_erdos_renyi_from_seed(
+                            erdos_renyi_task.nodes,
+                            erdos_renyi_task.tmax,
+                            erdos_renyi_task.delta,
+                            erdos_renyi_task.probability,
+                            erdos_renyi_task.seed,
+                        )
+                    }
+                };
+                let mut execution = FollowAlgorithmExecution::new(graph, args.clone());
+                execution.execute();
+                let components = execution.graph.delta_egde_connected_components();
+                let largest_component = if execution.graph.edge_count() > 0 {
+                    components.iter().map(Vec::len).max().unwrap()
+                } else {
+                    0
+                };
+                let probability = match task {
+                    ExperimentTask::Graph(_) => f64::NAN,
+                    ExperimentTask::ErdosRenyi(erdos_renyi_task) => erdos_renyi_task.probability,
+                };
+                ExperimentResult {
+                    probability: probability,
+                    node_count: execution.graph.node_count(),
+                    edge_count: execution.graph.edge_count(),
+                    restarts: execution.number_of_restarts(),
+                    restarts_for_component_discovery: execution.restarts_for_component_discovery,
+                    tmax: execution.graph.tmax.0,
+                    delta: execution.graph.delta.0,
+                    skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
+                    component_count: components.len(),
+                    component_max_size: largest_component,
+                    component_mean_size: (components.iter().map(Vec::len).sum::<usize>() as f64)
+                        / components.len() as f64,
                 }
-            };
-            let mut execution = FollowAlgorithmExecution::new(graph, args.clone());
-            execution.execute();
-            let components = execution.graph.delta_egde_connected_components();
-            let largest_component = if execution.graph.edge_count() > 0 {
-                components.iter().map(Vec::len).max().unwrap()
-            } else {
-                0
-            };
-            let probability = match task {
-                ExperimentTask::Graph(_) => f64::NAN,
-                ExperimentTask::ErdosRenyi(erdos_renyi_task) => erdos_renyi_task.probability,
-            };
-            ExperimentResult {
-                probability: probability,
-                node_count: execution.graph.node_count(),
-                edge_count: execution.graph.edge_count(),
-                restarts: execution.number_of_restarts(),
-                restarts_for_component_discovery: execution.restarts_for_component_discovery,
-                tmax: execution.graph.tmax.0,
-                delta: execution.graph.delta.0,
-                skipped_redundant_infections: !args.dont_skip_redundant_start_infections,
-                component_count: components.len(),
-                component_max_size: largest_component,
-                component_mean_size: (components.iter().map(Vec::len).sum::<usize>() as f64)
-                    / components.len() as f64,
-            }
-        })
-        .collect();
+            })
+            .collect();
 
-    write_results(&results).unwrap();
+        write_results(&results).unwrap();
+    }
 
     Ok(())
 }

@@ -55,7 +55,7 @@ impl FollowAlgorithmExecution {
             debug!("\tInfection attempt along {:?} at {:?}", edge, time);
             self.infection_attempts[edge.1 .0][time.0] = true;
         }
-        if (self.graph.edge_label(edge.1) == time) && !is_immune {
+        if (self.graph.edge_label(edge.1).0 == time.0) && !is_immune {
             if !self.discovered_edges[edge.1 .0] {
                 self.discovered_edges_count += 1;
                 self.discovered_edges[edge.1 .0] = true;
@@ -88,8 +88,8 @@ impl FollowAlgorithmExecution {
         while !infected.is_empty() & (time.0 < self.graph.tmax.0) {
             let mut new_infected = vec![];
             for (node, time_left) in &infected {
-                // TODO: Optimize the clone away
-                for edge in self.graph.adj_lists[node.0].clone() {
+                for i in 0..self.graph.adj_lists[node.0].len() {
+                    let edge = self.graph.adj_lists[node.0][i];
                     if self.make_infection_attempt(edge.clone(), time, &mut infection_log) {
                         new_infected.push((edge.0, self.graph.delta));
                         infected_edges.push(edge.1);
@@ -392,7 +392,7 @@ mod tests {
         let (execution_skipped, execution_unskipped) =
             execute_follow_skipped_unskipped(generate_n100_erdos_renyi_graph());
         assert_le!(
-            execution_skipped.restarts_for_component_discovery,
+            execution_skipped.restarts_for_component_discover,
             execution_unskipped.restarts_for_component_discovery
         )
     }
