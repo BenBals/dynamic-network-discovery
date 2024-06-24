@@ -192,6 +192,7 @@ fn main() -> io::Result<()> {
     };
 
     let bar = ProgressBar::new(tasks.len() as u64);
+    bar.set_style(indicatif::ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})").unwrap());
     log::info!("Solving graphs...");
 
     let results: Vec<ExperimentResult> = tasks
