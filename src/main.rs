@@ -76,11 +76,13 @@ struct ExperimentTask {
 }
 
 fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
-    let iterations = MAX_NODES * REPEATS * PROBABILITIES.len();
-    let mut tasks = Vec::with_capacity(iterations);
+    let iterations = MAX_NODES / NODES_STEP_SIZE * REPEATS * PROBABILITIES.len() * TMAX_FACTORS.len() * DELTA_FACTORS.len();
+    let mut task_settings = Vec::with_capacity(iterations);
 
     // For deterministic graph generation
     let mut shared_rng: Box<dyn RngCore> = Box::new(StdRng::seed_from_u64(args.seed));
+
+    log::info!("Generating task settings...");
 
     for probability in PROBABILITIES {
         for nodes in (1..=MAX_NODES).step_by(NODES_STEP_SIZE) {
@@ -89,24 +91,35 @@ fn generate_erdos_renyi_tasks(args: &Args) -> Vec<ExperimentTask> {
                     for _repeat in 1..=REPEATS {
                         let tmax = (nodes as f64 * tmax_factor).floor().max(2.0) as usize;
                         let delta= (tmax as f64 * delta_factor).floor().max(1.0) as usize;
-                        tasks.push(ExperimentTask {
-                            // While deterministically generating graphs is significantly slower, it makes
-                            // comparing results between different configurations of the follow algorithm
-                            // much more meaningful
-                            graph: TemporalGraph::gen_erdos_renyi_with_rng(
-                                nodes,
-                                Time(tmax),
-                                Time(delta),
-                                probability,
-                                &mut shared_rng,
-                            ),
-                            probability: probability,
-                        });
+                        task_settings.push((nodes, tmax, delta, probability, shared_rng.next_u64()))
                     }
                 }
             }
         }
     }
+
+    log::info!("Generating graphs...");
+    let bar = ProgressBar::new(task_settings.len() as u64);
+
+    let mut tasks = task_settings
+        .par_iter()
+        .progress_with(bar)
+        .map(|(nodes, tmax, delta, probability, rng_seed)| {
+            let mut rng  = Box::new(StdRng::seed_from_u64(*rng_seed));
+            ExperimentTask {
+                // While deterministically generating graphs is significantly slower, it makes
+                // comparing results between different configurations of the follow algorithm
+                // much more meaningful
+                graph: TemporalGraph::gen_erdos_renyi_with_rng(
+                    *nodes,
+                    Time(*tmax),
+                    Time(*delta),
+                    *probability,
+                    &mut rng,
+                ),
+                probability: *probability,
+            }
+        });
 
     tasks.shuffle(&mut shared_rng);
 
@@ -178,6 +191,7 @@ fn main() -> io::Result<()> {
     };
 
     let bar = ProgressBar::new(tasks.len() as u64);
+    log::info!("Solving graphs...");
 
     let results: Vec<ExperimentResult> = tasks
         .par_iter()
