@@ -80,22 +80,26 @@ impl FollowAlgorithmExecution {
             "Simulating infection at {:?} at {:?}",
             root_node, infection_time
         );
-        let mut infected: Vec<NodeIdx> = vec![root_node];
+        let mut infected: Vec<(NodeIdx, Time)> = vec![(root_node, self.graph.delta)];
         let mut time = infection_time + Time(1);
         let mut infection_log: Vec<Option<EdgeIdx>> = vec![None; self.graph.node_count()];
         let mut infected_edges = vec![];
 
         while !infected.is_empty() & (time.0 < self.graph.tmax.0) {
             let mut new_infected = vec![];
-            for node in &infected {
+            for (node, time_left) in &infected {
                 // TODO: Optimize the clone away
                 for edge in self.graph.adj_lists[node.0].clone() {
                     if self.make_infection_attempt(edge.clone(), time, &mut infection_log) {
-                        new_infected.push(edge.0);
+                        new_infected.push((edge.0, self.graph.delta));
                         infected_edges.push(edge.1);
 
                         self.update_todo_start_infections(edge.1)
                     }
+                }
+
+                if time_left >= &Time(1) {
+                    new_infected.push((*node, Time(time_left.0 - 1)))
                 }
             }
 
