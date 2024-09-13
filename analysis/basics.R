@@ -93,15 +93,15 @@ plot_variable(data %>% filter(probability == 0.3), "restarts", "Restarts", logge
 plot_variable(
   data %>% filter(skipped_redundant_infections == TRUE),
   "restarts",
-  "Restarts",
+  "Rounds",
   logged = TRUE,
   facet_variable = "probability_fac",
   # title = "Follow algorithm Erdős-Renyi graphs with different densities"
   )
 ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"))
-plot_variable(data_different_tmax, "restarts", "Restarts")
+plot_variable(data_different_tmax, "restarts", "Rounds")
 
-plot_variable(data_snap, "restarts", "Restarts",
+plot_variable(data_snap, "restarts", "Rounds",
                             # title = "SNAP Networks",
                             color = FALSE)
 ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"))
@@ -157,7 +157,7 @@ plot_summary(
   "probability",
   "probability_fac",
   "component_discovery_percentage") +
-  labs(x = "p", y = "Percentage of restarts \n due to component discovery")
+  labs(x = "p", y = "Percentage of rounds \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
 
@@ -166,7 +166,7 @@ plot_summary(
   "tmax",
   "tmax",
   "component_discovery_percentage") +
-  labs(x = "Tmax", y = "Percentage of restarts \n due to component discovery")
+  labs(x = "Tmax", y = "Percentage of rounds \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-{timestamp_few_nodes_many_p}.pdf"), height = 3)
 
 
@@ -178,7 +178,7 @@ data_few_nodes_many_p %>%
   geom_point() +
   scale_x_log10() +
   scale_color_continuous(type = "viridis") +
-  labs(x = "Tmax / p", y = "Percentage of restarts \n due to component discovery")
+  labs(x = "Tmax / p", y = "Percentage of rounds \n due to component discovery")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-Tmax-over-p-{timestamp_few_nodes_many_p}.pdf"))
 
 data_few_nodes_many_p %>%
@@ -189,7 +189,7 @@ data_few_nodes_many_p %>%
   # geom_smooth(aes(group = node_count)) +
   scale_x_log10() +
   scale_color_continuous(type = "viridis") +
-  labs(x = TeX("$np / T_{max}$"), y = "Percentage of restarts \n due to component discovery", color = "n")
+  labs(x = TeX("$np / T_{max}$"), y = "Percentage of rounds \n due to component discovery", color = "n")
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-n-times-p-over-Tmax.pdf"), scale = 0.6)
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-n-times-p-over-Tmax.png"), scale = 0.6)
 
