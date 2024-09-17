@@ -7,3 +7,11 @@ rGraphicsSettings.xml
 .RData
 .Rhistory
 misc.xml
+graphs
+graphs.bak
+**/.DS_Store
+.idea
+export
+analysis/export
+flamegraph.svg
+profile.json
