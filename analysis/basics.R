@@ -14,8 +14,10 @@ read_experiment_results <- function(timestamp) {
   data$restarts_for_following <- data$restarts - data$restarts_for_component_discovery
   data$restarts_per_edge <- data$restarts / data$edge_count
   data$tmax_over_p <- data$tmax / data$probability
+  data$tmax_over_n <- data$tmax / data$node_count
   data$tmax_over_n_times_p <- data$tmax / (data$node_count * data$probability)
   data$n_times_p_over_tmax <- (data$node_count * data$probability) / data$tmax
+  data$components_per_edge <- data$component_count / data$edge_count
   return(data)
 }
 
@@ -49,7 +51,7 @@ plot_variable <- function(
   color = TRUE,
   abline = TRUE) {
   this_aes <- if (color) {
-    aes(x = !!sym(var_x), y = !!sym(var_y), color = probability_fac)
+    aes(x = !!sym(var_x), y = !!sym(var_y), color = tmax_over_n)
   } else {
     aes(x = !!sym(var_x), y = !!sym(var_y))
   }
@@ -57,27 +59,27 @@ plot_variable <- function(
   plot <- dat %>%
     ggplot(this_aes) +
     geom_point() +
-    # geom_abline(slope = 6) +
-    scale_color_discrete() +
+    scale_color_continuous(type = "viridis", trans = "log10") +
+    scale_x_continuous(labels = scales::scientific) +
     geom_smooth(method = lm, color = "red") +
-    labs(x = label_x, y = label_y, color = "p") +
+    labs(x = label_x, y = label_y, color = TeX("$T_{max} / n$")) +
     ggtitle(title)
 
   if (!is.null(facet_variable)) {
     plot <- plot +
-      facet_wrap(reformulate(facet_variable), nrow = ifelse(facet_variable == "optimization", 2, 3))
+      facet_wrap(reformulate(facet_variable), nrow = ifelse(facet_variable == "optimization", 2, 2))
   }
 
   if (logged) {
     plot <- plot +
-      scale_x_log10() +
+      scale_x_log10(breaks = c(1,100,10000), labels = scales::scientific) +
       scale_y_log10() +
       geom_function(fun = function (edges) {return(6 * edges)}, color = "black")
   }
 
   if (!logged & abline) {
     plot <- plot +
-      geom_segment(aes(x = 0, y = 0, xend = max(edge_count), yend = 6 * max(edge_count)), color = "black")
+      geom_function(fun = function (edges) {return(6 * edges)}, color = "black")
   }
 
   return(plot)
@@ -91,20 +93,21 @@ plot_variable(data, "restarts_for_following", "Restarts (following only)", logge
 ggsave(glue("./export/erdos-renyi_restarts-for-following-by-edge-count-{timestamp_skipped}.pdf"))
 plot_variable(data %>% filter(probability == 0.3), "restarts", "Restarts", logged = TRUE)
 plot_variable(
-  data %>% filter(skipped_redundant_infections == TRUE),
+  data_few_nodes_many_p %>% slice_sample(prop = 0.05),
   "restarts",
   "Rounds",
   logged = TRUE,
   facet_variable = "probability_fac",
   # title = "Follow algorithm Erdős-Renyi graphs with different densities"
   )
-ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"))
+ggsave(glue("./export/erdos-renyi_restarts-by-edge-count-and-p-{timestamp_skipped}.pdf"), width = 11, height = 5, units = "cm", scale = 2.5)
 plot_variable(data_different_tmax, "restarts", "Rounds")
 
 plot_variable(data_snap, "restarts", "Rounds",
                             # title = "SNAP Networks",
                             color = FALSE)
-ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"))
+ggsave(glue("./export/snap_restarts-by-edge-count-and-p-{timestamp_snap_all}.pdf"), scale = 2, units = "cm", height = 5, width = 3)
+lm(restarts ~ edge_count, data_snap)
 
 plot_variable(data_skipped,
               "component_discovery_percentage",
@@ -157,8 +160,9 @@ plot_summary(
   "probability",
   "probability_fac",
   "component_discovery_percentage") +
-  labs(x = "p", y = "Percentage of rounds \n due to component discovery")
-ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_few_nodes_many_p}.pdf"), height = 3)
+  labs(x = "p", y = "Percentage of rounds \n due to component discovery") +
+  scale_x_continuous(n.breaks = 10)
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-p-{timestamp_few_nodes_many_p}.pdf"), height = 4, width = 9, units = "cm", scale = 2)
 
 
 plot_summary(
@@ -190,7 +194,7 @@ data_few_nodes_many_p %>%
   scale_x_log10() +
   scale_color_continuous(type = "viridis") +
   labs(x = TeX("$np / T_{max}$"), y = "Percentage of rounds \n due to component discovery", color = "n")
-ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-n-times-p-over-Tmax.pdf"), scale = 0.6)
+ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-n-times-p-over-Tmax.pdf"), scale = 2, units = "cm", width = 6.5, height = 6)
 ggsave(glue("./export/erdos-renyi_component-discovery-percentage-by-n-times-p-over-Tmax.png"), scale = 0.6)
 
 data_few_nodes_many_p %>%
@@ -221,10 +225,19 @@ data_few_nodes_many_p %>%
   ggplot(aes(x = n_times_p_over_tmax, y = mean_component_mean_size, color=node_count)) +
   geom_point() +
   scale_x_log10() +
-  scale_y_log10() +
+  scale_y_log10(labels = scales::scientific) +
   scale_color_continuous(type = "viridis") +
-  labs(x = "np / Tmax", y = "Mean mean component size")
-ggsave(glue("./export/erdos-renyi_component_mean_size-by-n-times-p-over-Tmax.pdf"), scale = 0.6)
+  labs(x = TeX("$np / T_{max}$"), y = "Mean component size", color = "n")
+ggsave(glue("./export/erdos-renyi_component_mean_size-by-n-times-p-over-Tmax.pdf"), scale = 2, units = "cm", width = 6.5, height = 6)
 
 # TODO: Flip tmax / np to np/Tmax
 data %>% filter(restarts_for_following > 6 * edge_count)
+
+data_few_nodes_many_p %>%
+  slice_sample(prop = 0.05) %>%
+  ggplot(aes(x = tmax_over_n_times_p, y = components_per_edge, color = node_count)) +
+  geom_point() +
+  geom_smooth() +
+  scale_color_continuous(type = "viridis") +
+  scale_x_log10() +
+  scale_y_log10()
